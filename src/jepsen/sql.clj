@@ -2,7 +2,9 @@
   "Main API for SQL tests."
   (:require [clojure.string :as str]
             [jepsen [cli :as cli]]
-            [jepsen.sql [internal :as internal]]))
+            [jepsen.sql [append :as append]
+                        [internal :as internal]
+                        [rw :as rw]]))
 
 (defn workloads
   "Constructs a map of workload names (e.g. `:internal`) to functions which
@@ -22,7 +24,10 @@
          wrap (fn wrap [workload-fn]
                 (fn workload [cli-opts]
                   (workload-fn (merge cli-opts sql-opts))))]
-     {:internal (wrap internal/workload)}))
+     (update-vals {:append   append/workload
+                   :internal internal/workload
+                   :wr       rw/workload}
+                  wrap)))
 
 (def key-types
   "The various ways we can select something by primary key."

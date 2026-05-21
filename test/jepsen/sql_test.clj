@@ -2,6 +2,7 @@
   "We build out a whole Postgres test here to make sure everything works."
   (:require [clj-commons.slingshot :refer [try+ throw+]]
             [clojure [pprint :refer [pprint]]
+                     [set :as set]
                      [string :as str]
                      [test :refer :all]]
             [clojure.java.io :as io]
@@ -131,25 +132,58 @@
 
 (def base-opts
   "Basic options we use over and over."
-  {:nodes ["n1"]
-   :isolation :serializable
+  {:nodes          ["n1"]
+   :concurrency    5
+   :isolation      :serializable
    :max-txn-length 4
-   :mop-delay 0})
+   :mop-delay      0
+   :key-types      (vec sql/key-types)
+   :upsert-types   (vec sql/upsert-types)})
 
-(deftest internal-test
-  (let [opts (assoc base-opts
-                    :isolation :read-uncommitted
-                    :name "internal")
-        workload ((:internal workloads) opts)
+(defn run-workload!
+  "Runs a test for the given options, which are merged into base-opts."
+  [opts]
+  (let [opts          (merge base-opts opts)
+        workload-name (:workload opts)
+        workload      ((get workloads workload-name) opts)
         test (merge noop-test
                     opts
                     workload
-                    {:db (db)
+                    {:db        (db)
+                     :name      (name workload-name)
                      :generator (->> (:generator workload)
                                      (gen/clients)
-                                     (gen/time-limit 1))})
-        test' (jepsen/run! test)
+                                     (gen/time-limit 5))})]
+    (jepsen/run! test)))
+
+(deftest internal-test
+  (let [test' (run-workload! {:workload :internal
+                              :isolation :read-uncommitted})
         res (:results test')]
-    (is (true? (:valid? res)))
-    (is (= [] (:errors res)))
+    (is (false? (:valid? res)))
+    (let [e (first (:errors res))]
+      (is (map? (:op e)))
+      (is (vector? (:mop e)))
+      (is (integer? (:k e))))
+    (is (pos? (:error-count res)))
     (is (pos? (:txn-count res)))))
+
+(deftest append-test
+  (let [test' (run-workload! {:workload                   :append
+                              :isolation                  :read-uncommitted
+                              :expected-consistency-model :serializable})
+        res (:results test')]
+    (is (false? (:valid? res)))
+    ; (pprint (:results test'))
+    (is (set/superset? (set (:anomaly-types res))
+                       #{:internal :lost-update :G2-item}))))
+
+(deftest rw-test
+  (let [test' (run-workload! {:workload                   :append
+                              :isolation                  :read-uncommitted
+                              :expected-consistency-model :serializable})
+        res (:results test')]
+    (is (false? (:valid? res)))
+    ; (pprint (:results test'))
+    (is (set/superset? (set (:anomaly-types res))
+                       #{:internal :lost-update :G2-item}))))

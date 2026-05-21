@@ -7,5 +7,8 @@
                  [jepsen "0.3.12-SNAPSHOT"]
                  [com.github.seancorfield/next.jdbc "1.3.1093"]]
   :repl-options {:init-ns io.jepsen.sql}
-  :profiles {:dev {:dependencies [[org.postgresql/postgresql "42.7.11"]]}})
+  :profiles {:dev {:dependencies [[org.postgresql/postgresql "42.7.11"]]}}
+  :test-selectors {:default (fn [m] (not (or (:perf m))))
+                   :all         (fn [m] true)
+                   :focus       :focus})
 

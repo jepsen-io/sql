@@ -101,12 +101,12 @@
             (throw e#)))))
 
 (defmacro try+
-  "Like Slingshot try+, but rewrites exceptions using *known-error*. This
+  "Like Slingshot try+, but rewrites exceptions using *error-fn*. This
   way, you can write:
 
       (try+ (j/execute [...])
         (catch [:definite? true] ...))"
-  [known-error & forms]
+  [& forms]
   (let [; Split up into body expressions and catch/finally clauses
         parts (group-by (fn [form]
                           (boolean (and (seq? form)
