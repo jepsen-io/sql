@@ -49,18 +49,19 @@
 
 (defmacro with-txn
   "Like next.jdbc/with-transaction, but takes a test map first. Re-wraps the
-  connection in logging, if applicable. By default, sets the isolation level
-  from the test."
+  connection in logging, if applicable. Opts are passed through to
+  jdbc/with-transaction. By default, sets the isolation level from the test."
   [test [lhs rhs & opts] & body]
   (assert (<= (count opts) 1))
   `(let [opts# (merge {:isolation (:isolation ~test)}
                       ~(first opts))]
-     (j/with-transaction [~lhs ~rhs ~@opts]
+     (j/with-transaction [~lhs ~rhs opts#]
        (let [~lhs (with-logging ~test ~lhs)]
          ~@body))))
 
 (defmacro with-manual-txn
-  "Same as with-txn, but uses explicit BEGIN/COMMIT statements."
+  "Same as with-txn, but uses explicit BEGIN/COMMIT statements. Opts are
+  ignored."
   [test [lhs rhs & opts] & body]
   `(let [~lhs ~rhs]
      (try
