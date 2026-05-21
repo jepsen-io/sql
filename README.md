@@ -25,6 +25,8 @@ Workloads use a set of standard keys in the test map, like `:wfr-keys?` and
 documented in a data structure, `jepsen.sql/cli-opts`, which can be merged into
 your CLI options for `tools.cli`.
 
+See [`jepsen.sql-test`](test/jepsen/sql_test.clj) for example usage.
+
 ### Opening a Client
 
 You'll need a function `(open test node)` which takes a Jepsen test map and a
@@ -32,15 +34,17 @@ node string, and returns a `next.jdbc` Connection. For example:
 
 ```clj
 (defn open
-  "Opens a JDBC connection to the given node."
+  "Opens a connection to the given node."
   [test node]
-  (let [spec {:dbtype "meowdb"
-              :host node
-              :port port}]
-    (->> spec
-         j/get-datasource
-         j/get-connection)))
-
+  (let [spec {:dbtype   "postgresql"
+              :host     node
+              :port     5432
+              :user     "postgres"
+              :password "pw"
+              :sslmode  "disable"}
+        ds    (j/get-datasource spec)
+        conn  (j/get-connection ds)]
+    conn))
 ```
 
 ### Errors
@@ -51,16 +55,21 @@ little bit of what happened when an error is thrown. To do that, we transform
 exceptions using an error function `(error-fn exception)`. For example:
 
 ```clj
-(defn error-fn [e]
-  (let [m (.getMessage e)]
+(defn error-fn
+  [e]
+  (let [msg (.getMessage e)]
     (condp identical? (class e)
-      SQLException
-      (condp re-find m
-        #"duplicate key value" {:type :duplicate
-                                :msg  m
-                                :definite? true}
-        ...)
-      ...)))
+      org.postgresql.util.PSQLException
+      (condp re-find msg
+        #"current transaction is aborted"
+        {:type :txn-aborted
+         :definite? true}
+
+        #"duplicate key value"
+        {:type :duplicate-key-value
+         :definite? true}
+        nil)
+      nil)))
 ```
 
 `error-fn` should return either a Clojure map (which will be thrown as an
