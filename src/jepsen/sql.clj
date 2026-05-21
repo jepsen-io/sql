@@ -6,28 +6,6 @@
                         [internal :as internal]
                         [rw :as rw]]))
 
-(defn workloads
-  "Constructs a map of workload names (e.g. `:internal`) to functions which
-  take CLI options and return a workload map (e.g. `{:generator ..., :client
-  ..., :checker ...}`). Options are:
-
-      :open     (fn [test conn] ...), a function which opens a next.jdbc
-                connection to the given node.
-      :error-fn (fn [exception] ...), a function which transforms exceptions
-                into maps.
-
-  See the README for details."
-  [{:keys [open error-fn]}]
-   ; Our workload functions take a single map of merged options from the CLI
-   ; and here; we construct a little wrapper function.
-   (let [sql-opts {::open open, ::error-fn error-fn}
-         wrap (fn wrap [workload-fn]
-                (fn workload [cli-opts]
-                  (workload-fn (merge cli-opts sql-opts))))]
-     (update-vals {:append   append/workload
-                   :internal internal/workload
-                   :wr       rw/workload}
-                  wrap)))
 
 (def key-types
   "The various ways we can select something by primary key."
@@ -123,3 +101,26 @@
     :id :wfr-keys?
     :default true]
    ])
+
+(defn workloads
+  "Constructs a map of workload names (e.g. `:internal`) to functions which
+  take CLI options and return a workload map (e.g. `{:generator ..., :client
+  ..., :checker ...}`). Options are:
+
+      :open     (fn [test conn] ...), a function which opens a next.jdbc
+                connection to the given node.
+      :error-fn (fn [exception] ...), a function which transforms exceptions
+                into maps.
+
+  See the README for details."
+  [{:keys [open error-fn]}]
+   ; Our workload functions take a single map of merged options from the CLI
+   ; and here; we construct a little wrapper function.
+   (let [sql-opts {::open open, ::error-fn error-fn}
+         wrap (fn wrap [workload-fn]
+                (fn workload [cli-opts]
+                  (workload-fn (merge cli-opts sql-opts))))]
+     (update-vals {:append   append/workload
+                   :internal internal/workload
+                   :wr       rw/workload}
+                  wrap)))
