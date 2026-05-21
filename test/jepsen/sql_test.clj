@@ -138,7 +138,8 @@
    :max-txn-length 4
    :mop-delay      0
    :key-types      (vec sql/key-types)
-   :upsert-types   (vec sql/upsert-types)})
+   :upsert-types   (vec sql/upsert-types)
+   :linearizable-keys? true})
 
 (defn run-workload!
   "Runs a test for the given options, which are merged into base-opts."
@@ -179,11 +180,11 @@
                        #{:internal :lost-update :G2-item}))))
 
 (deftest rw-test
-  (let [test' (run-workload! {:workload                   :append
+  (let [test' (run-workload! {:workload                   :rw
                               :isolation                  :read-uncommitted
                               :expected-consistency-model :serializable})
         res (:results test')]
     (is (false? (:valid? res)))
     ; (pprint (:results test'))
     (is (set/superset? (set (:anomaly-types res))
-                       #{:internal :lost-update :G2-item}))))
+                       #{:internal :lost-update}))))

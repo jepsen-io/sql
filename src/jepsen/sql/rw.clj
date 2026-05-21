@@ -159,7 +159,7 @@
 
   (teardown! [_ test conn]
     (dotimes [i (:table-count test default-table-count)]
-      (j/execute! conn [(str "drop table if exists" (table-name i))])))
+      (j/execute! conn [(str "drop table if exists " (table-name i))])))
 
   (close! [this test]))
 

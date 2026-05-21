@@ -88,7 +88,7 @@
    [nil "--[no-]savepoints" "Does this database support savepoints?"
     :default true]
 
-   [nil "--[no-]sequential-keys" "If set, assumes keys are sequentially consistent for the wr workload."
+   [nil "--[no-]sequential-keys" "If set, assumes keys are sequentially consistent for the rw workload."
     :id :sequential-keys?
     :default false]
 
@@ -97,7 +97,7 @@
     :parse-fn parse-comma-kws
     :validate [(partial every? upsert-types) (cli/one-of upsert-types)]]
 
-   [nil "--[no-]wfr-keys" "If set, assumes keys obey writes-follow-reads within a single transaction, for the wr workload. This is almost *certainly* a safe assumption."
+   [nil "--[no-]wfr-keys" "If set, assumes keys obey writes-follow-reads within a single transaction, for the rw workload. This is almost *certainly* a safe assumption."
     :id :wfr-keys?
     :default true]
    ])
@@ -122,5 +122,5 @@
                   (workload-fn (merge cli-opts sql-opts))))]
      (update-vals {:append   append/workload
                    :internal internal/workload
-                   :wr       rw/workload}
+                   :rw       rw/workload}
                   wrap)))
