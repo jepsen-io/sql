@@ -111,7 +111,7 @@
     conn))
 
 (defn error-fn
-  [e]
+  [^Exception e]
   (let [msg (.getMessage e)]
     (condp identical? (class e)
       org.postgresql.util.PSQLException

@@ -27,7 +27,7 @@
   spec like so:
 
     (jepsen.cli/merge-opt-specs jepsen.sql/cli-opts
-                                [your options here])
+                                [...your options here...])
 
   This way your options can override any provided here."
   [["-i" "--isolation LEVEL" "What level of isolation should we use for transactions? serializable, repeatable-read, etc."
