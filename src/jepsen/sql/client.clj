@@ -17,7 +17,7 @@
 (defn close-conn!
   "Closes a connection or a next.jdbc wrapper containing a connection."
   [conn]
-  (j/on-connection [^java.sql.Connection conn conn]
+  (j/on-connection [^Connection conn conn]
     (.close conn)))
 
 (defn with-logging
@@ -37,14 +37,15 @@
 (defn set-transaction-isolation!
   "Sets the transaction isolation level on a connection. Returns conn."
   [conn level]
-  (.setTransactionIsolation
-    conn
-    (case level
-      :serializable     Connection/TRANSACTION_SERIALIZABLE
-      :repeatable-read  Connection/TRANSACTION_REPEATABLE_READ
-      :read-committed   Connection/TRANSACTION_READ_COMMITTED
-      :read-uncommitted Connection/TRANSACTION_READ_UNCOMMITTED))
-  conn)
+  (j/on-connection [^Connection conn conn]
+                   (.setTransactionIsolation
+                     conn
+                     (case level
+                       :serializable     Connection/TRANSACTION_SERIALIZABLE
+                       :repeatable-read  Connection/TRANSACTION_REPEATABLE_READ
+                       :read-committed   Connection/TRANSACTION_READ_COMMITTED
+                       :read-uncommitted Connection/TRANSACTION_READ_UNCOMMITTED))
+  conn))
 
 (defmacro with-txn
   "Like next.jdbc/with-transaction, but takes a test map first. Re-wraps the
