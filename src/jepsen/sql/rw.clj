@@ -152,8 +152,8 @@
     (let [txn       (:value op)
           use-txn?  (rand/nth [true (< 1 (count txn))])
           txn'      (if use-txn?
-                      (c/with-txn test [conn conn]
-                        (mapv (partial mop! test conn true) txn))
+                      (c/with-txn test [t conn]
+                        (mapv (partial mop! test t true) txn))
                       (mapv (partial mop! test conn false) txn))]
       (assoc op :type :ok, :value txn')))
 

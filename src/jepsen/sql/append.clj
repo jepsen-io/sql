@@ -155,8 +155,8 @@
           use-txn?  (< 1 (count txn))
           txn'      (if use-txn?
                       ;(if true
-                      (c/with-txn test [conn conn]
-                        (mapv (partial mop! test conn true) txn))
+                      (c/with-txn test [t conn]
+                        (mapv (partial mop! test t true) txn))
                       (mapv (partial mop! test conn false) txn))]
       (assoc op :type :ok, :value txn')))
 

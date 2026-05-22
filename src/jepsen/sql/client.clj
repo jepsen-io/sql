@@ -60,13 +60,19 @@
          ~@body))))
 
 (defmacro with-manual-txn
-  "Same as with-txn, but uses explicit BEGIN/COMMIT statements. Opts are
-  ignored."
+  "Same as with-txn, but uses explicit BEGIN/COMMIT statements and SET
+  TRANSACTION ISOLATION LEVEL. I've been using this to see if there's something
+  broken with next.jdbc's transaction handling. Opts are ignored."
   [test [lhs rhs & opts] & body]
   `(let [~lhs ~rhs]
      (try
-       (set-transaction-isolation! ~lhs (:isolation ~test))
        (j/execute! ~lhs ["BEGIN"])
+       (j/execute! ~lhs [(str "SET TRANSACTION ISOLATION LEVEL "
+                              (case (:isolation ~test)
+                                :serializable     "SERIALIZABLE"
+                                :repeatable-read  "REPEATABLE READ"
+                                :read-committed   "READ COMMITTED"
+                                :read-uncommitted "READ UNCOMMITTED"))])
        (let [res# ~@body]
          (j/execute! ~lhs ["COMMIT"])
          res#)
