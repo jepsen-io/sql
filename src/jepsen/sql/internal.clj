@@ -64,12 +64,11 @@
                       ")")]))
 
   (invoke! [_ test conn op]
-    ;(j/with-transaction [t conn]
-    (c/with-manual-txn test [conn conn]
+    (c/with-txn test [t conn]
       (assoc op
              :type :ok
              :value (->> (:value op)
-                         (mapv (partial mop! test conn))
+                         (mapv (partial mop! test t))
                          (remove nil?)
                          vec))))
 
