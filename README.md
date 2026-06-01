@@ -16,6 +16,9 @@ to interpret errors. The top-level entry point is `jepsen.sql/workloads`
    :error-fn (fn [e] ...)})
 ```
 
+`open` opens a JDBC connection to a node. `error-fn` rewrites errors thrown by
+operations on that connection as maps.
+
 This returns a map of workload names (e.g. `:append`) to functions which take
 CLI option maps and return a workload (e.g. `{:client ..., :generator ...,
 :checker ...}`). You can use these workloads to build a test map.

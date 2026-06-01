@@ -59,6 +59,15 @@
        (let [~lhs (with-logging ~test ~lhs)]
          ~@body))))
 
+(defn isolation-level-string
+  "A map of isolation levels (as keywords) to their SQL names."
+  [level]
+  (case level
+    :serializable     "SERIALIZABLE"
+    :repeatable-read  "REPEATABLE READ"
+    :read-committed   "READ COMMITTED"
+    :read-uncommitted "READ UNCOMMITTED"))
+
 (defmacro with-manual-txn
   "Same as with-txn, but uses explicit BEGIN/COMMIT statements and SET
   TRANSACTION ISOLATION LEVEL. I've been using this to see if there's something
@@ -68,11 +77,7 @@
      (try
        (j/execute! ~lhs ["BEGIN"])
        (j/execute! ~lhs [(str "SET TRANSACTION ISOLATION LEVEL "
-                              (case (:isolation ~test)
-                                :serializable     "SERIALIZABLE"
-                                :repeatable-read  "REPEATABLE READ"
-                                :read-committed   "READ COMMITTED"
-                                :read-uncommitted "READ UNCOMMITTED"))])
+                              (isolation-level-string (:isolation ~test)))])
        (let [res# ~@body]
          (j/execute! ~lhs ["COMMIT"])
          res#)
@@ -144,6 +149,10 @@
     (binding [*error-fn* error-fn]
       (let [conn (->> (open test node)
                       (with-logging test))]
+        (j/execute-one! conn
+                        [(str "SET SESSION CHARACTERISTICS "
+                              "AS TRANSACTION ISOLATION LEVEL "
+                              (isolation-level-string (:isolation test)))])
         (assoc this
                :conn   conn
                :client (open! client test conn node)))))
