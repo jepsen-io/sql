@@ -101,6 +101,78 @@ not to do this; if you write your own, you need to take care too.
 
 Error maps can have other keys at your discretion.
 
+## Workloads
+
+### Internal
+
+The [internal](src/jepsen/sql/internal.clj) workload checks for [internal
+consistency](https://drops.dagstuhl.de/storage/00lipics/lipics-vol042-concur2015/LIPIcs.CONCUR.2015.58/LIPIcs.CONCUR.2015.58.pdf)
+(i.e. within individual transactions). It performs simple transactions over a
+map of integer keys to integer values. These keys are stored in a table like
+so:
+
+```sql
+CREATE TABLE IF NOT EXISTS internal (
+  id int not null primary key,
+  val integer
+)
+```
+
+Transactions can insert, update, and read values by key, generally interacting
+with a small pool of keys which constantly rotate over time. We then check the
+internal consistency of each individual transaction by playing forward each
+operation it performed, and ensuring that reads observe the effects of previous
+operations. Errors from this workload look like:
+
+```clj
+{:op {:index 5414,
+      :time 13880933098,
+      :type :ok,
+      :process 3,
+      :f :txn,
+      :value [[:r 474 6] [:r 474 nil]]},
+ :mop [:r 474 nil],
+ :k 474,
+ :expected 6,
+ :actual nil}
+```
+
+This transaction performed two micro-operations: a read of key `474` which
+observed the value `6`, and then immediately again, observing `nil`. The first
+faulty micro-operation was `[:r 474 nil]`; we expected to observe `6`, but
+actually observed `nil`. This transaction violates Read Atomic.
+
+## RW
+
+The [rw](src/jepsen/sql/rw.clj) workload looks for transactional consistency
+over a map of integer keys to integer values using
+[Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
+spread across several tables, and accesses them either by primary or secondary
+key. Transactions perform a mix of reads and writes of unique (for that key)
+integers. From there, Elle infers version orders based on a few heuristics, and
+from there infers constraints on the dependency graph between transactions. It
+looks for a variety of transactional anomalies based both on cycle detection
+and other heuristics. For more details, see Elle's
+[rw-register](https://github.com/jepsen-io/elle/blob/main/src/elle/rw_register.clj).
+
+In general, the `append` workload is much better at inferring transactional
+anomalies. However, `rw` may help narrow down failures.
+
+## Append
+
+The [append](sec/jepsen/sql/append.clj) workload looks for transactional
+consistency over a map of integer keys to lists of integer values, using over a
+map of integer keys to integer values using
+[Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
+spread across several tables, and encodes values as a `TEXT` field of
+comma-separated values. Transactions acceess rows either by primary or
+secondary key. Transactions perform a mix of reads and appends of unique (for
+that key) integers. From there, Elle infers version orders based on a few
+heuristics, and from there infers constraints on the dependency graph between
+transactions. It looks for a variety of transactional anomalies based both on
+cycle detection and other heuristics. For more details, see Elle's
+[list-append](https://github.com/jepsen-io/elle/blob/main/src/elle/list_append.clj).
+
 ## License
 
 Copyright © 2026 Jepsen, LLC
