@@ -142,7 +142,7 @@ observed the value `6`, and then immediately again, observing `nil`. The first
 faulty micro-operation was `[:r 474 nil]`; we expected to observe `6`, but
 actually observed `nil`. This transaction violates Read Atomic.
 
-## RW
+### RW
 
 The [rw](src/jepsen/sql/rw.clj) workload looks for transactional consistency
 over a map of integer keys to integer values using
@@ -158,7 +158,7 @@ and other heuristics. For more details, see Elle's
 In general, the `append` workload is much better at inferring transactional
 anomalies. However, `rw` may help narrow down failures.
 
-## Append
+### Append
 
 The [append](sec/jepsen/sql/append.clj) workload looks for transactional
 consistency over a map of integer keys to lists of integer values, using over a
