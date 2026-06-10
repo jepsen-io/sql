@@ -6,13 +6,14 @@
                      [string :as str]]
             [dom-top.core :refer [loopr with-retry]]
             [elle.core :as elle]
-            [jepsen [checker :as checker]
-             [core :as jepsen]
-             [generator :as gen]
-             [util :as util]
-             [random :as rand]]
-            [jepsen.checker.timeline :as timeline]
-            [jepsen.sql [client :as c]]
+            [jepsen [core :as jepsen]
+                    [generator :as gen]
+                    [util :as util]
+                    [random :as rand]]
+            [jepsen.sql [client :as c]
+                        [checker :as checker
+                         :refer [assert-at-most-one
+                                 assert-instance-or-nil]]]
             [jepsen.tests.cycle.append :as append]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
@@ -42,7 +43,10 @@
                             " = ? ")
                        k]
                       {:builder-fn rs/as-unqualified-lower-maps})]
+    (assert-at-most-one r)
     (when-let [v (:val (first r))]
+      ; This sounds deeply silly, but trust me, we want to check
+      (assert-instance-or-nil String v)
       (mapv parse-long (str/split v #",")))))
 
 (defn append-on-conflict!
@@ -223,4 +227,5 @@
                           :min-txn-length 1
                           :consistency-models [(:expected-consistency-model opts)]))
       (assoc :client (c/client (Client. nil) opts))
+      (update :checker checker/compose :append)
       (update :generator ro-gen)))

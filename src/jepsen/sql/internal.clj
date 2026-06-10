@@ -9,14 +9,16 @@
                      [string :as str]]
             [dom-top.core :refer [loopr with-retry]]
             [elle.core :as elle]
-            [jepsen [checker :as checker]
+            [jepsen [checker]
                     [client :as client]
                     [core :as jepsen]
                     [generator :as gen]
                     [history :as h]
                     [random :as rand]
                     [util :as util]]
-            [jepsen.sql [client :as c]]
+            [jepsen.sql [client :as c]
+                        [checker :as checker :refer [assert-at-most-one
+                                                     assert-instance-or-nil]]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
             [next.jdbc.sql.builder :as sqlb]
@@ -44,11 +46,14 @@
                     pos?)
               [f k v])
 
-    :r [f k (-> conn
-                (j/execute-one! [(str "SELECT (val) FROM internal "
-                                      "WHERE id = ?") k]
-                                {:builder-fn rs/as-unqualified-lower-maps})
-                :val)]))
+    :r (let [x (-> conn
+                   (j/execute! [(str "SELECT (val) FROM internal "
+                                     "WHERE id = ?") k]
+                               {:builder-fn rs/as-unqualified-lower-maps})
+                   assert-at-most-one
+                   :val)]
+         (assert-instance-or-nil Long x)
+         [f k x])))
 
 (defrecord Client []
   c/Client
@@ -145,7 +150,7 @@
            nil)))
 
 (defrecord Checker []
-  checker/Checker
+  jepsen.checker/Checker
   (check [this test history opts]
     (let [{:keys [n errors]}
           (->> (t/filter h/ok?)
@@ -165,4 +170,4 @@
   [opts]
   {:generator (gen)
    :client    (c/client (Client. nil nil) opts)
-   :checker   (Checker.)})
+   :checker   (checker/compose (Checker.) :internal)})

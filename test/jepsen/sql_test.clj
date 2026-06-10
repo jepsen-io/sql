@@ -160,7 +160,7 @@
 (deftest internal-test
   (let [test' (run-workload! {:workload :internal
                               :isolation :read-uncommitted})
-        res (:results test')]
+        res (:internal (:results test'))]
     (is (false? (:valid? res)))
     (let [e (first (:errors res))]
       (is (map? (:op e)))
@@ -173,7 +173,7 @@
   (let [test' (run-workload! {:workload                   :append
                               :isolation                  :read-uncommitted
                               :expected-consistency-model :serializable})
-        res (:results test')]
+        res (:append (:results test'))]
     (is (false? (:valid? res)))
     ; (pprint (:results test'))
     (is (set/superset? (set (:anomaly-types res))
@@ -183,7 +183,7 @@
   (let [test' (run-workload! {:workload                   :rw
                               :isolation                  :read-uncommitted
                               :expected-consistency-model :serializable})
-        res (:results test')]
+        res (:rw (:results test'))]
     (is (false? (:valid? res)))
     ; (pprint (:results test'))
     (is (set/superset? (set (:anomaly-types res))

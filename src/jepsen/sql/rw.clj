@@ -6,14 +6,16 @@
                      [string :as str]]
             [dom-top.core :refer [loopr with-retry]]
             [elle.core :as elle]
-            [jepsen [checker :as checker]
+            [jepsen
              [core :as jepsen]
              [generator :as gen]
              [random :as rand]
              [util :as util]]
             [jepsen.checker.timeline :as timeline]
             [jepsen.tests.cycle.wr :as wr]
-            [jepsen.sql [client :as c]]
+            [jepsen.sql [client :as c]
+                        [checker :as checker :refer [assert-instance-or-nil
+                                                     assert-at-most-one]]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
             [next.jdbc.sql.builder :as sqlb]
@@ -112,16 +114,16 @@
 (defn read
   "Reads the value of key k."
   [test conn table k]
-  (-> (j/execute! conn
-                  [(str "SELECT (val) FROM " table " WHERE "
-                        (case (rand/nth (:key-types test))
-                          :primary   "id"
-                          :secondary "sk")
-                        " = ?")
-                   k]
-                  {:builder-fn rs/as-unqualified-lower-maps})
-      first
-      :val))
+  (let [r (-> (j/execute! conn
+                      [(str "SELECT (val) FROM " table " WHERE "
+                            (case (rand/nth (:key-types test))
+                              :primary   "id"
+                              :secondary "sk")
+                            " = ?")
+                       k]
+                      {:builder-fn rs/as-unqualified-lower-maps})
+              assert-at-most-one)]
+    (assert-instance-or-nil Long (first (:val r)))))
 
 (defn mop!
   "Executes a transactional micro-op on a connection. Returns the completed
@@ -223,4 +225,5 @@
                       :min-txn-length 1
                       :consistency-models [(:expected-consistency-model opts)]))
       (assoc :client (c/client (Client. nil) opts))
+      (update :checker checker/compose :rw)
       (update :generator ro-gen)))
