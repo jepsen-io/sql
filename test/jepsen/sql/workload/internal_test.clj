@@ -1,5 +1,5 @@
-(ns jepsen.sql.rw-test
-  "A test for the rw workload on Postgres."
+(ns jepsen.sql.workload.internal-test
+  "A test for the internal workload on Postgres."
   (:require [clj-commons.slingshot :refer [try+ throw+]]
             [clojure [pprint :refer [pprint]]
                      [set :as set]
@@ -9,7 +9,7 @@
             [jepsen.sql.base-test :refer :all]))
 
 
-(deftest rw-test
+(deftest internal-test
   (let [test' (run-workload! {:workload :internal
                               :isolation :read-uncommitted})
         res (:internal (:results test'))]

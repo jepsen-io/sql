@@ -1,4 +1,4 @@
-(ns jepsen.sql.internal
+(ns jepsen.sql.workload.internal
   "A simple test for internal consistency. Transactions perform a mixture of
   inserts, updates, and reads of individual keys, randomly changing but mostly
   focused on recent keys. We then look for cases where a transaction failed to

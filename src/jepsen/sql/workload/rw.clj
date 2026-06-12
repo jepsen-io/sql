@@ -1,4 +1,4 @@
-(ns jepsen.sql.rw
+(ns jepsen.sql.workload.rw
   "Test for transactional read-write registers"
   (:refer-clojure :exclude [read])
   (:require [clojure.tools.logging :refer [info warn]]

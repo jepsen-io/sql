@@ -116,13 +116,20 @@
     (condp identical? (class e)
       org.postgresql.util.PSQLException
       (condp re-find msg
+        #"could not serialize access due to .+ dependencies"
+        {:type :dependency-cycle :definite? true}
+
+        #"could not serialize access due to concurrent update"
+        {:type :concurrent-update, :definite? true}
+
         #"current transaction is aborted"
-        {:type :txn-aborted
-         :definite? true}
+        {:type :txn-aborted, :definite? true}
+
+        #"deadlock detected"
+        {:type :deadlock, :definite? true}
 
         #"duplicate key value"
-        {:type :duplicate-key-value
-         :definite? true}
+        {:type :duplicate-key-value, :definite? true}
         nil)
       nil)))
 
@@ -133,13 +140,24 @@
 (def base-opts
   "Basic options we use over and over."
   {:nodes          ["n1"]
-   :concurrency    5
+   :concurrency    10
    :isolation      :serializable
    :max-txn-length 4
    :mop-delay      0
    :key-types      (vec sql/key-types)
    :upsert-types   (vec sql/upsert-types)
-   :linearizable-keys? true})
+   :linearizable-keys? true
+   :logging
+   ; We're going to run a bunch of our own tests here and the log noise is
+   ; incredible. Uncomment these for details.
+   {:overrides {"jepsen.core" :warn
+                "jepsen.db" :warn
+                "jepsen.print" :warn
+                "jepsen.store" :warn
+                "jepsen.sql.base-test" :warn
+                "jepsen.sql.client" :warn
+                "elle.viz" :warn
+                "net.schmizz.sshj.SSHClient" :warn}}})
 
 (defn run-workload!
   "Runs a test for the given options, which are merged into base-opts."
@@ -154,5 +172,5 @@
                      :name      (name workload-name)
                      :generator (->> (:generator workload)
                                      (gen/clients)
-                                     (gen/time-limit 5))})]
+                                     (gen/limit 1000))})]
     (jepsen/run! test)))

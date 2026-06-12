@@ -2,13 +2,13 @@
   "Main API for SQL tests."
   (:require [clojure.string :as str]
             [jepsen [cli :as cli]]
-            [jepsen.sql [append :as append]
-                        [internal :as internal]
-                        [rw :as rw]]))
+            [jepsen.sql.workload [append :as append]
+                                 [internal :as internal]
+                                 [rw :as rw]]))
 
 
 (def key-types
-  "The various ways we can select something by primary key."
+  "The various ways we can select something by logical key."
   #{:primary :secondary})
 
 (def upsert-types
@@ -43,6 +43,10 @@
     :default nil
     :parse-fn keyword]
 
+   [nil "--[no-]indirection" "Allows workloads to look up rows via a separate, indirect lookup table."
+    :id :indirection?
+    :default false]
+
    [nil "--key-types TYPES" "Some workloads have multiple ways to select the row for a specific key. TYPES is a comma-separated list of types like primary,secondary, which means we use a mix of primary keys and (un-indexed) secondary keys."
     :default  (vec key-types)
     :parse-fn parse-comma-kws
@@ -63,6 +67,7 @@
     :id :linearizable-keys?
     :default false]
 
+   ; TODO: id :log-sql?
    [nil "--log-sql" "Logs SQL queries"]
 
    [nil "--max-txn-length NUM" "Maximum number of operations in a transaction."
