@@ -100,6 +100,15 @@
           " = ?")
      k k e e k]))
 
+(defn insert!
+  "Inserts a row into the given data table with the given comma-separated
+  string value."
+  [conn table k value-string]
+  (j/execute! conn
+              [(str "INSERT INTO " table " (id, sk, val)"
+                    " VALUES (?, ?, ?)")
+               k k value-string]))
+
 (defn append-insert!
   "Performs an initial insert of a key with initial element e. Catches
   duplicate key exceptions, returning true if succeeded. If the insert fails
@@ -110,10 +119,7 @@
   (let [savepoint? (and txn? (:savepoints test))]
     (c/try+
       (when savepoint? (j/execute! conn ["SAVEPOINT UPSERT"]))
-      (j/execute! conn
-                  [(str "INSERT INTO " table " (id, sk, val)"
-                        " VALUES (?, ?, ?)")
-                   k k e])
+      (insert! conn table k (str e))
       (when savepoint? (j/execute! conn ["RELEASE SAVEPOINT upsert"]))
       true
       (catch [:definite? true] e
@@ -159,7 +165,7 @@
   "Appends by upserting directly to a data table, without doing anything with
   an indirection table."
   [test conn table txn? k e]
-  (case (rand/nth (:upsert-types test))
+  (case (rand/nth (remove #{:copy-on-write} (:upsert-types test)))
     ; Try an update, and if that fails, fall back to an insert, and if THAT
     ; fails, we probably conflicted, so update again.
     :update-insert-update
@@ -167,6 +173,23 @@
 
     :on-conflict
     (append-on-conflict! test conn table k e)))
+
+(defn append-cow!
+  "Appends by creating a new copy of the row and updating the indirection table
+  to match. Takes the test, client, connection, indirection, the logical key in
+  the indirection table, the data table, and then the current id in the data
+  table, and the element being appended."
+  [test client conn indirection k table id e]
+  (info "Copy on write!")
+  (let [v (if-let [v (:val (read-direct test conn table id))]
+            (do (assert-instance-or-nil String v)
+                (str v "," e))
+            (str e))
+        id (id! client)]
+    ; Write copy
+    (insert! conn table id v)
+    ; Update reference
+    (base/write-indirection! test conn indirection k id)))
 
 (defn append!
   "Appends element e to key k, returning e."
@@ -179,11 +202,17 @@
             ; Ah, we need to do a fresh indirection. Generate an ID.
             new-indirection? (nil? id)
             id (or id (id! client))]
-        ; Do a normal append
-        (append-without-indirection! test conn table txn? id e)
-        ; And create an indirection entry linking this key to this id
-        (when new-indirection?
-          (base/write-indirection! test conn indirection k id)))
+        (case (rand/nth (:upsert-types test))
+          :copy-on-write
+          (append-cow! test client conn indirection k table id e)
+
+          ; Otherwise...
+          (do ; Append in place
+              (append-without-indirection! test conn table txn? id e)
+              ; And create an indirection entry linking this key to this id
+              (when new-indirection?
+                (base/write-indirection! test conn indirection k id)))))
+
       ; When we're not doing indirection, we can just write directly
       (append-without-indirection! test conn table txn? k e)))
   e)
@@ -322,8 +351,8 @@
       :key-types          A vector of keywords for strategies we use to look up
                           a row. May include :primary, :secondary.
       :upsert-types       A vector of keywords for strategies we use for
-                          upserts. Can include :insert-update-update or
-                          :on-conflict.
+                          upserts. Can include :insert-update-update,
+                          :on-conflict, or :copy-on-write.
   "
   [opts]
   (-> (append/test (assoc (select-keys opts [:key-count

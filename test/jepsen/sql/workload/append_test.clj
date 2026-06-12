@@ -22,6 +22,7 @@
   (let [test' (run-workload! {:workload                   :append
                               :isolation                  :read-uncommitted
                               :expected-consistency-model :serializable
+                              :log-sql                    true
                               :indirection?               true})
         res (:append (:results test'))]
     (is (false? (:valid? res)))

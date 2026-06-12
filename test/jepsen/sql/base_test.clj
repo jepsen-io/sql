@@ -150,14 +150,16 @@
    :logging
    ; We're going to run a bunch of our own tests here and the log noise is
    ; incredible. Uncomment these for details.
-   {:overrides {"jepsen.core" :warn
-                "jepsen.db" :warn
-                "jepsen.print" :warn
-                "jepsen.store" :warn
-                "jepsen.sql.base-test" :warn
-                "jepsen.sql.client" :warn
-                "elle.viz" :warn
-                "net.schmizz.sshj.SSHClient" :warn}}})
+   {:overrides
+    #_ nil
+    {"jepsen.core" :warn
+       "jepsen.db" :warn
+       "jepsen.print" :warn
+       "jepsen.store" :warn
+       "jepsen.sql.base-test" :warn
+       "jepsen.sql.client" :warn
+       "elle.viz" :warn
+       "net.schmizz.sshj.SSHClient" :warn}}})
 
 (defn run-workload!
   "Runs a test for the given options, which are merged into base-opts."

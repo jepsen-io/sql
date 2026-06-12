@@ -47,9 +47,10 @@
           indirection-id-col        " int primary key, "
           indirection-target-id-col " int)")]))
 
-(defn write-indirection!
+(defn write-indirection-delete-insert!
   "Upserts an indirection relationship. Takes a test, connection, the
-  indirection map, the indirection key, and the target key."
+  indirection map, the indirection key, and the target key. Deletes, then
+  inserts a fresh row."
   [test conn
    {:keys [indirection-table
            target-table
@@ -57,8 +58,6 @@
            indirection-target-id-col
            target-id-col]}
    indirection-id target-id]
-  (assert (:indirection? test))
-  ; Just to be weird, we'll do our upsert via a DELETE/INSERT.
   (j/execute! conn [(str "DELETE FROM " indirection-table
                          " WHERE " indirection-id-col " = ?")
                     indirection-id])
@@ -69,6 +68,39 @@
           " VALUES (?, ?)")
      indirection-id
      target-id]))
+
+(defn write-indirection-on-conflict!
+  "Upserts an indirection relationship. Takes a test, connection, the
+  indirection map, the indirection key, and the target key. Updates it using
+  INSERT ... ON CONFLICT."
+  [test conn
+   {:keys [indirection-table
+           target-table
+           indirection-id-col
+           indirection-target-id-col
+           target-id-col]}
+   indirection-id target-id]
+  (j/execute! conn [(str "INSERT INTO " indirection-table " AS t ("
+                         indirection-id-col ", " indirection-target-id-col
+                         ") VALUES (?, ?) ON CONFLICT (" indirection-id-col
+                         ") DO UPDATE SET " indirection-target-id-col
+                         " = ? WHERE t." indirection-id-col " = ?")
+                    indirection-id
+                    target-id
+                    target-id
+                    indirection-id]))
+
+(defn write-indirection!
+  "Upserts an indirection relationship. Takes a test, connection, the
+  indirection map, the indirection key, and the target key. Deletes, then
+  inserts a fresh row."
+  [test conn indirection indirection-id target-id]
+  (assert (:indirection? test))
+  (case (rand/nth [:delete-insert :on-conflict])
+    :delete-insert (write-indirection-delete-insert!
+                     test conn indirection indirection-id target-id)
+    :on-conflict (write-indirection-on-conflict!
+                   test conn indirection indirection-id target-id)))
 
 (defn read-indirection-target-id
   "Takes a test, connection, and indirection, and an indirection ID. Looks up

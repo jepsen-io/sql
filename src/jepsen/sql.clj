@@ -13,7 +13,7 @@
 
 (def upsert-types
   "The various upsert tactics we use."
-  #{:update-insert-update :on-conflict})
+  #{:update-insert-update :on-conflict :copy-on-write})
 
 (defn parse-comma-kws
   "Parses comma-separated strings into a vector of keywords."
