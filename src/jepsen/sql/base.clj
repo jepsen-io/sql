@@ -3,7 +3,15 @@
   (:require [clojure.tools.logging :refer [info warn]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
+            [jepsen [random :as rand]]
             [jepsen.sql [checker :refer [assert-at-most-one]]]))
+
+(defn mop-sleep
+  "Sleeps for a small amount of time between micro-operations in a transaction.
+  We use this to create concurrency between transaction steps where we can
+  observe inconsistency."
+  [test]
+  (Thread/sleep (rand/zipf (:mop-delay test))))
 
 (defn indirection
   "Constructs a map representing an indirection table. Indirection tables
@@ -110,9 +118,33 @@
       assert-at-most-one
       first))
 
+(defn read-indirection-two-step
+  "Reads a single row of the target table via an indirecton table, using a pair
+  of select queries."
+  [test conn
+   {:keys [indirection-table
+           target-table
+           indirection-id-col
+           indirection-target-id-col
+           target-id-col]
+    :as indirection}
+   indirection-id]
+  (when-let [id (read-indirection-target-id test conn indirection indirection-id)]
+    (mop-sleep test)
+    (-> conn
+        (j/execute!
+          [(str "SELECT * FROM " target-table
+                " WHERE " target-id-col " = ?")
+           id]
+          {:builder-fn rs/as-unqualified-lower-maps})
+        assert-at-most-one
+        first)))
+
 (defn read-indirection
   "Reads a single row of the target table via an indirection table. Takes a
   test, connection, indirection map, and the indirection id to look up."
   [test conn indirection indirection-id]
   (assert (:indirection? test))
-  (read-indirection-join test conn indirection indirection-id))
+  (let [method (rand/nth [read-indirection-two-step
+                          read-indirection-join])]
+    (method test conn indirection indirection-id)))

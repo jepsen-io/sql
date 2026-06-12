@@ -192,7 +192,7 @@
   "Executes a transactional micro-op on a connection. Returns the completed
   micro-op."
   [test client conn txn? [f k v]]
-  (Thread/sleep (rand/zipf (:mop-delay test)))
+  (base/mop-sleep test)
   [f k (case f
          :r      (read    test client conn k)
          :append (append! test client conn txn? k v))])
