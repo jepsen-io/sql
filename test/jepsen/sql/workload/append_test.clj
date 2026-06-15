@@ -18,7 +18,7 @@
     (is (set/superset? (set (:anomaly-types res))
                        #{:internal :lost-update :G2-item}))))
 
-(deftest ^:focus indirect-append-test-read-uncommitted
+(deftest indirect-append-test-read-uncommitted
   (let [test' (run-workload! {:workload                   :append
                               :isolation                  :read-uncommitted
                               :expected-consistency-model :serializable
@@ -30,7 +30,7 @@
     (is (set/superset? (set (:anomaly-types res))
                        #{:internal :lost-update :G2-item}))))
 
-(deftest ^:focus indirect-append-test-serializable
+(deftest indirect-append-test-serializable
   (let [test' (run-workload! {:workload                   :append
                               :isolation                  :serializable
                               :expected-consistency-model :serializable

@@ -8,15 +8,18 @@
             [clojure.tools.logging :refer [info warn]]
             [jepsen.sql.base-test :refer :all]))
 
-
-(deftest rw-test
-  (let [test' (run-workload! {:workload :internal
-                              :isolation :read-uncommitted})
-        res (:internal (:results test'))]
+(deftest rw-test-read-uncommitted
+  (let [test' (run-workload! {:workload  :rw
+                              :isolation :read-uncommitted
+                              :expected-consistency-model :serializable})
+        res (:rw (:results test'))]
     (is (false? (:valid? res)))
-    (let [e (first (:errors res))]
-      (is (map? (:op e)))
-      (is (vector? (:mop e)))
-      (is (integer? (:k e))))
-    (is (pos? (:error-count res)))
-    (is (pos? (:txn-count res)))))
+    (is (set/superset? (set (:anomaly-types res))
+                       #{:internal :G2}))))
+
+(deftest ^:focus rw-test-serializable
+  (let [test' (run-workload! {:workload  :rw
+                              :isolation :serializable
+                              :expected-consistency-model :serializable})
+        res (:rw (:results test'))]
+    (is (true? (:valid? res)))))
