@@ -38,8 +38,8 @@
   "Sets k to v using INSERT ... ON CONFLICT"
   [test client conn k v]
   (let [{:keys [table key-encoding val-encoding]} (table-for client k)
-        k ((:encode key-encoding) k k)
-        v ((:encode val-encoding) k v)]
+        k' ((:encode key-encoding) k k)
+        v' ((:encode val-encoding) k v)]
     (j/execute! conn
                 [(str "INSERT INTO " table " AS t"
                       " (id, sk, val) VALUES (?, ?, ?)"
@@ -49,7 +49,7 @@
                         :primary   "t.id"
                         :secondary "t.sk")
                       " = ?")
-                 k k v v k])))
+                 k' k' v' v' k'])))
 
 (defn write-update!
   "Sets k to v by using an UPDATE statement. Returns true if written, otherwise
