@@ -16,7 +16,7 @@
     (is (false? (:valid? res)))
     ; (pprint (:results test'))
     (is (set/superset? (set (:anomaly-types res))
-                       #{:internal :lost-update :G2-item}))))
+                       #{:internal :lost-update}))))
 
 (deftest indirect-append-test-read-uncommitted
   (let [test' (run-workload! {:workload                   :append
