@@ -180,7 +180,6 @@
   the indirection table, the data table, and then the current id in the data
   table, and the element being appended."
   [test client conn indirection k table id e]
-  (info "Copy on write!")
   (let [v (if-let [v (:val (read-direct test conn table id))]
             (do (assert-instance-or-nil String v)
                 (str v "," e))

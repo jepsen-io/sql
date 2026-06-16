@@ -2,6 +2,7 @@
   "Main API for SQL tests."
   (:require [clojure.string :as str]
             [jepsen [cli :as cli]]
+            [jepsen.sql [encoding :as encoding]]
             [jepsen.sql.workload [append :as append]
                                  [internal :as internal]
                                  [rw :as rw]]))
@@ -30,7 +31,14 @@
                                 [...your options here...])
 
   This way your options can override any provided here."
-  [["-i" "--isolation LEVEL" "What level of isolation should we use for transactions? serializable, repeatable-read, etc."
+  [(let [encodings (set (mapv encoding/name encoding/all-encodings))]
+     [nil "--encodings ENCODING_NAMES" "A comma-separated list of encoding names---different ways we can encode our integer values into the database."
+      :default (sort encodings)
+      :parse-fn parse-comma-kws
+      :validate [(partial every? encodings)
+                 (cli/one-of encodings)]])
+
+   ["-i" "--isolation LEVEL" "What level of isolation should we use for transactions? serializable, repeatable-read, etc."
     :default :serializable
     :parse-fn keyword
     :validate [#{:read-uncommitted

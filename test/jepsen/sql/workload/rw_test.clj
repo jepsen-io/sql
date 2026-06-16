@@ -22,4 +22,5 @@
                               :isolation :serializable
                               :expected-consistency-model :serializable})
         res (:rw (:results test'))]
+    (pprint res)
     (is (true? (:valid? res)))))
