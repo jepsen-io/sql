@@ -6,11 +6,12 @@
 
 (defn roundtrip
   [encoding k x]
-  (is (= x
-         (->> x
-              ((:encode encoding) k)
-              ((:simulate-db encoding identity))
-              ((:decode encoding) k)))))
+  (let [x' (->> x
+                ((:encode encoding) k)
+                ((:simulate-db encoding identity))
+                ((:decode encoding) k))]
+    (is (= (type x) (type x')))
+    (is (= x x'))))
 
 (def integer
   ; We have never gotten anywhere near to this close as many keys, and this means we can safely pack into floats etc.
