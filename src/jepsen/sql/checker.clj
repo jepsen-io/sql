@@ -21,7 +21,7 @@
                                   (when-let [e (:type (:error op))]
                                     (when (= "jepsen.sql" (namespace e))
                                       true)))))
-                    (t/group-by :type)
+                    (t/group-by (comp :type :error))
                     (t/into [])
                     (h/tesser history))]
       {:valid?      (not (seq errs))
