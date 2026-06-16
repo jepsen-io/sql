@@ -41,6 +41,8 @@
     (assert-instance-or-nil Double x)
     (when x (long x))))
 
+; Packing the integer either before or after the decimal point of a decimal
+; type
 (defrecord DecimalEncoding []
   Encoding
   (name [_] :decimal)
@@ -73,19 +75,36 @@
     (when x
       (parse-long (str/trim x)))))
 
-(defrecord IdentityEncoding []
+; character varying(n) variable-width strings
+(defrecord CharacterVaryingEncoding []
   Encoding
-  (name [_] :identity)
-  (type [_] "integer")
-  (encode [_ k x] x)
-  (decode [_ k x] x))
+  (name [_] :character-varying)
+  (type [_] "character varying(32)")
+  (encode [_ k x] (str x))
+  (decode [_ k x]
+    (assert-instance-or-nil String x)
+    (when x
+      (parse-long x))))
+
+; text columns
+(defrecord TextEncoding []
+  Encoding
+  (name [_] :text)
+  (type [_] "text")
+  (encode [_ k x] (str x))
+  (decode [_ k x]
+    (assert-instance-or-nil String x)
+    (when x
+      (parse-long x))))
 
 (def all-encodings
   "All available encodings"
-  [(DoubleEncoding.)
-   (CharacterEncoding.)
+  [(IntegerEncoding.)
+   (DoubleEncoding.)
    (DecimalEncoding.)
-   (IntegerEncoding.)])
+   (CharacterEncoding.)
+   (CharacterVaryingEncoding.)
+   (TextEncoding.)])
 
 (defn encodings
   "All allowed encodings for a test."
@@ -97,7 +116,7 @@
                   (count encodings))
         (throw (IllegalArgumentException. (str "Unrecognized encoding names"
                                                (pr-str names)))))
-      encodings)))
+      (shuffle encodings))))
 
 (defn encoding
   "Turns an integer key into an encoding. Rotates between encodings using mod.

@@ -122,6 +122,9 @@
         #"could not serialize access due to concurrent update"
         {:type :concurrent-update, :definite? true}
 
+        #"could not serialize access due to concurrent delete"
+        {:type :concurrent-delete, :definite? true}
+
         #"current transaction is aborted"
         {:type :txn-aborted, :definite? true}
 
