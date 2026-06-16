@@ -31,7 +31,7 @@
   [test conn [f k v]]
   (Thread/sleep (rand/zipf (:mop-delay test)))
   (case f
-    :insert (c/try+ (info :insert k)
+    :insert (c/try+
               (j/execute! conn [(str "INSERT INTO internal (id, val) "
                                      "VALUES (?, ?)")
                                 k v])
@@ -61,7 +61,6 @@
     this)
 
   (setup! [_ test conn]
-    (info :conn conn)
     (j/execute! conn
                 [(str "CREATE TABLE IF NOT EXISTS internal ("
                       "  id int not null primary key,"
