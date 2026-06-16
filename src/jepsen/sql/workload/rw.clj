@@ -16,8 +16,7 @@
             [jepsen.sql [client :as c]
                         [checker :as checker :refer [assert-instance-or-nil
                                                      assert-at-most-one]]
-                        [encoding :as encoding
-                         :refer [encode encodings]]]
+                        [encoding :as encoding]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
             [next.jdbc.sql.builder :as sqlb]
@@ -39,8 +38,8 @@
   "Sets k to v using INSERT ... ON CONFLICT"
   [test client conn k v]
   (let [{:keys [table key-encoding val-encoding]} (table-for client k)
-        k (encoding/encode key-encoding k k)
-        v (encoding/encode val-encoding k v)]
+        k ((:encode key-encoding) k k)
+        v ((:encode val-encoding) k v)]
     (j/execute! conn
                 [(str "INSERT INTO " table " AS t"
                       " (id, sk, val) VALUES (?, ?, ?)"
@@ -63,8 +62,8 @@
                                 :primary "id"
                                 :secondary "sk")
                               " = ?")
-                         (encoding/encode val-encoding k v)
-                         (encoding/encode key-encoding k k)])
+                         ((:encode val-encoding) k v)
+                         ((:encode key-encoding) k k)])
         :next.jdbc/update-count
         pos?)))
 
@@ -82,9 +81,9 @@
         (j/execute! conn ["SAVEPOINT upsert"]))
       (j/execute! conn
                   [(str "INSERT INTO " table " (id, sk, val) VALUES (?, ?, ?)")
-                   (encoding/encode key-encoding k k)
-                   (encoding/encode key-encoding k k)
-                   (encoding/encode val-encoding k v)])
+                   ((:encode key-encoding) k k)
+                   ((:encode key-encoding) k k)
+                   ((:encode val-encoding) k v)])
       (when savepoint?
         (j/execute! conn ["RELEASE SAVEPOINT upsert"]))
       true
@@ -130,12 +129,12 @@
                               :primary   "id"
                               :secondary "sk")
                             " = ?")
-                       (encoding/encode key-encoding k k)]
+                       ((:encode key-encoding) k k)]
                       {:builder-fn rs/as-unqualified-lower-maps})
               assert-at-most-one
               first
               :val)]
-    (encoding/decode val-encoding k r)))
+    ((:decode val-encoding) k r)))
 
 (defn mop!
   "Executes a transactional micro-op on a connection. Returns the completed
@@ -180,10 +179,10 @@
       (doseq [{:keys [table key-encoding val-encoding]} tables]
         (j/execute! conn
                     [(str "create table if not exists " table
-                          " (id " (encoding/type key-encoding)
+                          " (id " (:type key-encoding)
                           " not null primary key,
-                          sk " (encoding/type key-encoding) " not null,
-                          val " (encoding/type val-encoding) ")")]))))
+                          sk " (:type key-encoding) " not null,
+                          val " (:type val-encoding) ")")]))))
 
   (invoke! [this test conn op]
     (let [txn       (:value op)

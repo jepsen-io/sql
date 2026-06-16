@@ -31,7 +31,7 @@
                                 [...your options here...])
 
   This way your options can override any provided here."
-  [(let [encodings (set (mapv encoding/name encoding/all-encodings))]
+  [(let [encodings (set (mapv :name encoding/all-encodings))]
      [nil "--encodings ENCODING_NAMES" "A comma-separated list of encoding names---different ways we can encode our integer values into the database."
       :default (sort encodings)
       :parse-fn parse-comma-kws
