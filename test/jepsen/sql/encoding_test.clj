@@ -17,7 +17,7 @@
   ; We have never gotten anywhere near to this close as many keys, and this means we can safely pack into floats etc.
   (g/large-integer* {:min -16777216 :max 16777216}))
 
-(deftest ^:focus roundtrip-test
+(deftest roundtrip-test
   (checking "roundtrip" 1600
             [encoding   (g/elements all-encodings)
              k          integer

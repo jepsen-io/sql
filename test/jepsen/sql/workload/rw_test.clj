@@ -17,9 +17,10 @@
     (is (set/superset? (set (:anomaly-types res))
                        #{:internal}))))
 
-(deftest ^:focus rw-test-serializable
+(deftest rw-test-serializable
   (let [test' (run-workload! {:workload  :rw
                               :isolation :serializable
+                              ;:encodings [:integer]
                               :expected-consistency-model :serializable})
         res (:rw (:results test'))]
     (pprint res)
