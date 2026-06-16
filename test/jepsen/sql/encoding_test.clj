@@ -6,7 +6,6 @@
 
 (defn roundtrip
   [encoding k x]
-  (prn (:name encoding) k x)
   (is (= x
          (->> x
               ((:encode encoding) k)
