@@ -77,11 +77,15 @@
               (assert-instance-or-nil BigDecimal x)
               (when x
                 (if (even? (hash k))
-                  (long x)
+                  (try (.longValueExact ^BigDecimal x)
+                       (catch ArithmeticException e
+                         (throw+ {:type :jepsen.sql/unexpected-fractional-part
+                                  :expected "A BigDecimal like 123.0M"
+                                  :actual   x})))
                   (if-let [[m sign digits] (re-find #"^(-?)0.(\d+)$" (str x))]
                     (parse-long (str sign (str/join (reverse digits))))
-                    (throw+ {:type :jepsen.sql/unexpected-value
-                             :expected "0.123..."
+                    (throw+ {:type :jepsen.sql/unexpected-integral-part
+                             :expected "A BigDecimal like 0.321M"
                              :actual x})))))}
 
    ; char(n) fixed-width padded strings
