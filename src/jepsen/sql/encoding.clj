@@ -42,7 +42,7 @@
               (when-not (or (nil? x)
                             (integer? x))
                 (throw+ {:type :jepsen.sql/wrong-type
-                         :expected :integer
+                         :expected "some kind of integer"
                          :actual   (class x)
                          :value    x}))
               (when x (long x)))}

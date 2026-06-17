@@ -18,7 +18,8 @@
                     [util :as util]]
             [jepsen.sql [client :as c]
                         [checker :as checker :refer [assert-at-most-one
-                                                     assert-instance-or-nil]]]
+                                                     assert-instance-or-nil]]
+                        [encoding :as encoding]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
             [next.jdbc.sql.builder :as sqlb]
