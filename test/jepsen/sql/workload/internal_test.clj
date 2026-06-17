@@ -20,3 +20,10 @@
       (is (integer? (:k e))))
     (is (pos? (:error-count res)))
     (is (pos? (:txn-count res)))))
+
+(deftest internal-test-serializable
+  (let [test' (run-workload! {:workload :internal
+                              :isolation :serializable})
+        res (:internal (:results test'))]
+    (pprint res)
+    (is (true? (:valid? res)))))

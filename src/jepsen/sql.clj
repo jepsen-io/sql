@@ -68,8 +68,8 @@
    [nil "--key-dist DISTRIBUTION" "Key distribution pattern for workload generation."
     :default :exponential
     :parse-fn keyword
-    :validate [#{:uniform :exponential}
-               "Should be one of uniform or exponential"]]
+    :validate [#{:uniform :exponential :zipf}
+               "Should be one of uniform, exponential, or zipf"]]
 
    [nil "--[no-]linearizable-keys" "If set, assumes keys are linearizable for the wr workload."
     :id :linearizable-keys?

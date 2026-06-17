@@ -51,6 +51,7 @@
                                      "WHERE id = ?") k]
                                {:builder-fn rs/as-unqualified-lower-maps})
                    assert-at-most-one
+                   first
                    :val)]
          (assert-instance-or-nil Long x)
          [f k x])))
