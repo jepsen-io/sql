@@ -21,7 +21,7 @@
     (is (pos? (:error-count res)))
     (is (pos? (:txn-count res)))))
 
-(deftest ^:focus internal-test-serializable
+(deftest internal-test-serializable
   (let [test' (run-workload! {:workload :internal
                               :isolation :serializable})
         res (:internal (:results test'))]

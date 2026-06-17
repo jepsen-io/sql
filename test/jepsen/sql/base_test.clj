@@ -143,7 +143,7 @@
 (def base-opts
   "Basic options we use over and over."
   {:nodes              ["n1"]
-   :concurrency        10
+   :concurrency        3
    :isolation          :serializable
    :max-txn-length     4
    :mop-delay          0
