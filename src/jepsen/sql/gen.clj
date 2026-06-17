@@ -9,7 +9,12 @@
             [clojure.test.check [generators :as g]]
             [clojure.tools.logging :refer [info warn]]
             [jepsen [random :as rand]]
-            [dom-top.core :refer [loopr]]))
+            [jepsen.sql [ast :refer :all]]
+            [dom-top.core :refer [loopr]])
+  (:import (jepsen.sql.ast Case
+                           Insert
+                           Select
+                           Schema)))
 
 ;; Basic generators
 
@@ -66,60 +71,6 @@
   "All possible types, in shrinking order"
   [:int])
 
-(defprotocol SQL
-  (sql [this] "Converts this AST node to an SQL vector suitable for use with
-              `j/execute!"))
-
-(defprotocol DDL
-  (setup [this]
-    "A vector of SQL vectors that will create this thing.")
-  (teardown [this]
-    "A vector of SQL vectors that will tear dwon this thing."))
-
-(defn splice
-  "Splices n SQL vectors or strings together. We do this by concatenating
-  their strings and remaining parameters. Nil vanishes."
-  ([a]
-   a)
-  ([a b]
-   (cond (nil? a) b
-         (nil? b) a
-         true (if (string? a)
-                (if (string? b)
-                  (str a b)
-                  (assoc b 0 (str a (first b))))
-                (if (string? b)
-                  (assoc a 0 (str (first a) b))
-                  (-> (assoc a 0 (str (first a) (first b)))
-                      (into (subvec b 1)))))))
-  ([a b & more]
-   (reduce splice
-           (splice a b)
-           more)))
-
-(defn splice*
-  "Splices n SQL strings or vectors together, optionally joining them with the
-  given separator."
-  ([sqls]
-   (reduce splice sqls))
-  ([separator sqls]
-   (reduce (fn [acc sql]
-             (-> acc
-                 (splice separator)
-                 (splice sql)))
-           sqls)))
-
-(defrecord Column
-  [name
-   type
-   primary-key?]
-  SQL
-  (sql [_]
-    [(str name " "
-          (case type
-            (c/name type))
-          (when primary-key? " PRIMARY KEY"))]))
-
 (defn gen-column
   "Generates a Column with the given name."
   [name]
@@ -127,18 +78,6 @@
                    :type (g/elements all-types-vec)
                    :primary-key? g/boolean)
        (g/fmap map->Column)))
-
-(defrecord Table
-  [name cols]
-  DDL
-  (setup [this]
-    [(splice*
-       (conj ["CREATE TABLE " name " ("]
-             (splice* ", " (map sql cols))
-             ")"))])
-
-  (teardown [_]
-    [(str "DROP TABLE " name)]))
 
 (defn remove-duplicate-primary-keys
   "Takes a vector of columns and limits them to just one primary key."
@@ -181,20 +120,6 @@
                      (map->Table {:name name
                                   :cols cols})))))))
 
-(defrecord Schema
-  [; A vector of Tables
-   tables
-   ; A map of types to a handful of values, like {:integer [3, 4]}. We use this
-   ; to generate similar values often in a given schema, which makes joins and
-   ; equality predicates more likely to match.
-   vpool]
-
-  DDL
-  (setup [_]
-    (reduce into (map setup tables)))
-  (teardown [_]
-    (reduce into (map teardown tables))))
-
 (defn gen-schema
   "Generator for a Schema. Options are:
 
@@ -214,36 +139,11 @@
                  :vpool (g/return vpool))))
        (g/fmap map->Schema)))
 
-; Represents an SQL parameterized literal value like 2 or 'hi'.
-(defrecord Literal [x]
-  SQL
-  (sql [_]
-    ["?" x]))
-
 (defn gen-lit
   "Generates a literal of the given type."
   [opts schema type]
   (case type
     :int (gen-long Integer/MIN_VALUE Integer/MAX_VALUE)))
-
-; Represents a column name like `age`
-(defrecord ColumnName [name]
-  SQL
-  (sql [_]
-    name))
-
-; Represents an equality comparison like `name = 'regina'`
-(defrecord Equals [lhs rhs]
-  SQL
-  (sql [_]
-    (splice (sql lhs) " " (sql rhs))))
-
-(defrecord Insert [table cols values]
-  SQL
-  (sql [_]
-    (into [(str "INSERT INTO " table "(" (str/join ", " cols)
-                ") VALUES (" (str/join ", " (repeat (count values) "?")) ")")]
-          values)))
 
 (defn gen-insert
   "Represents an INSERT statement."
@@ -255,16 +155,6 @@
                      (apply g/tuple))]
     (Insert. (:name table)
              (mapv :name cols) vals)))
-
-; Represents a select statement like `select * from people where name =
-; regina`.
-(defrecord Select [table-name predicate]
-  SQL
-  (sql [_]
-    (splice "SELECT * FROM "
-            table-name
-            (when predicate
-              (splice " WHERE " (sql predicate))))))
 
 (defn gen-select
   "Generator of select statements"
@@ -278,11 +168,6 @@
   [opts schema]
   (g/frequency [[8 (gen-select opts schema)]
                 [8 (gen-insert opts schema)]]))
-
-(defrecord Case [schema statements]
-  DDL
-  (setup [_] (setup schema))
-  (teardown [_] (teardown schema)))
 
 (defn gen-case
   "Generator for a Case. Options:
