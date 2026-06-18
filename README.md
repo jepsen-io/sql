@@ -177,7 +177,7 @@ anomalies. However, `rw` may help narrow down failures.
 
 ### Append
 
-The [append](sec/jepsen/sql/append.clj) workload looks for transactional
+The [append](src/jepsen/sql/append.clj) workload looks for transactional
 consistency over a map of integer keys to lists of integer values, using over a
 map of integer keys to integer values using
 [Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
