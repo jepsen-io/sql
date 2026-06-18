@@ -65,7 +65,7 @@
   [row pairs]
   (persistent!
     (reduce (fn [row [col expr]]
-              (assoc! row (:keyword (:name col)) (eval-expr expr row)))
+              (assoc! row (keyword (:name col)) (eval-expr expr row)))
             (transient row)
             pairs)))
 
