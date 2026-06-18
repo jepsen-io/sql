@@ -23,8 +23,9 @@
                         [checker :as checker :refer [assert-at-most-one
                                                      assert-instance-or-nil]]
                         [encoding :as encoding]
-                        [ast :refer :all]
+                        [ast :as ast]
                         [gen :as sql.gen]]
+            [multiset.core :as multiset]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
             [next.jdbc.sql.builder :as sqlb]
@@ -101,19 +102,20 @@
                                   ; No columns left; must be equal
                                   0)))]
                 [(:name table)
-                 (Table. pkey-fn sort-fn #{})])))
+                 (Table. pkey-fn sort-fn (multiset/multiset))])))
        (into (sorted-map))
        (State.)))
 
 (defn sorted-rows
   "When returning errors, it's much nicer to sort. Takes a State, the string
-  table name, and collection of rows, and makes a sorted set of those rows,
+  table name, and collection of rows, and makes a sorted vector of those rows,
   each row a sorted map."
   [state table rows]
   (let [sort-fn (-> state :tables (get table) :sort-fn)]
     (->> rows
          (map (partial into (sorted-map)))
-         (into (sorted-set-by sort-fn)))))
+         (sort sort-fn)
+         vec)))
 
 (defprotocol CheckStatement
   (check-statement [statement state results]
@@ -154,6 +156,9 @@
                   update-count 0]
                  [row rows]
                  (if (or (nil? where) (eval-expr where row))
+                   ; An interesting question: what happens if you come back
+                   ; around to modify the same row again? I *think* this is
+                   ; fine functionally; either row would be equivalent.
                    (recur (-> rows'
                               (disj row)
                               (conj (update-row row (:set statement))))
@@ -164,7 +169,7 @@
                  (cond (< (:next.jdbc/update-count (first results))
                           update-count)
                        (reduced {:type      :not-enough-updated-rows
-                                 :statement (sql statement)
+                                 :statement (ast/sql statement)
                                  :expected  [:at-least update-count]
                                  :actual    (first results)
                                  :rows      (sorted-rows state table rows)})
@@ -196,7 +201,7 @@
                  (cond (< (:next.jdbc/update-count (first results))
                           update-count)
                        (reduced {:type :not-enough-updated-rows
-                                 :statement (sql statement)
+                                 :statement (ast/sql statement)
                                  :expected  [:at-least update-count]
                                  :actual    (first results)
                                  :rows      (sorted-rows state table rows)})
@@ -212,8 +217,8 @@
         ; Error
         state
         ; Success
-        (let [table (:name (:table statement))
-              results (set results)
+        (let [table   (:name (:table statement))
+              results (into (multiset/multiset) results)
               ; What rows should be present?
               required (->> (get-in state [:tables table :rows])
                             (filter
@@ -221,18 +226,17 @@
                                 (partial eval-expr w)
                                 ; With no WHERE clause, you match everything
                                 (constantly true)))
-                            set)
-              ; Ugh these should be multisets, ah well
-              missing (set/difference required results)]
+                            (into (multiset/multiset)))
+              missing (multiset/minus required results)]
           (if (seq missing)
             (reduced {:type       :missing-rows
-                      :statement  (sql statement)
+                      :statement  (ast/sql statement)
                       :missing    (sorted-rows state table missing)
                       :expected   (sorted-rows state table required)
                       :actual     (sorted-rows state table results)})
 
             ; Success; we know these rows are present in the table
-            (update-in state [:tables table :rows] set/union results))))))
+            (update-in state [:tables table :rows] multiset/union results))))))
 
 (defn check-txn
   "Takes an initial State and a transaction, represented as a series of SQL AST
@@ -261,7 +265,7 @@
              :case  (:case invoke)
              :index (:index complete)
              :txn (mapv (fn [statement results]
-                          {:statement (sql statement)
+                          {:statement (ast/sql statement)
                            :results   results})
                         (:value invoke) (:value complete))))))
 
@@ -272,7 +276,7 @@
   which denotes an error."
   [test conn statement]
   (Thread/sleep (rand/zipf (:mop-delay test)))
-  (let [sql (sql statement)]
+  (let [sql (ast/sql statement)]
     (c/try+
       (j/execute! conn sql {:builder-fn rs/as-unqualified-lower-maps})
       (catch [:definite? true] e
@@ -292,7 +296,7 @@
         (assoc op
                :type :ok
                :value (->> (:value op)
-                           setup
+                           ast/setup
                            (mapv (partial statement! test t))))
 
         :txn
@@ -326,7 +330,7 @@
   (-> (sql.gen/generate {:max-statement-count 4096
                          :max-table-count 2
                          :max-column-count 4})
-      (unique-tables i)
+      (ast/unique-tables i)
       delay))
 
 (defrecord Generator [; Case number

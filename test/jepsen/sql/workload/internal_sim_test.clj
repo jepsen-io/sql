@@ -6,6 +6,7 @@
                      [string :as str]
                      [test :refer :all]]
             [clojure.tools.logging :refer [info warn]]
+            [multiset.core :as multiset :refer [multiset multiset?]]
             [jepsen.sql.base-test :refer :all]))
 
 (defn valid-row
@@ -17,11 +18,12 @@
 (defn valid-missing-rows
   [{:keys [statement missing expected actual]}]
   (is (vector? statement))
-  (is (set? missing))
+  (is (vector? missing))
   ; At least one thing should be missing
   (is (seq missing))
-  (is (set? expected))
-  (is (set/superset? expected missing))
+  (is (vector? expected))
+  (is (multiset/subset? (into (multiset) missing)
+                        (into (multiset) expected)))
   ; All rows should be well-formed
   (mapv valid-row missing)
   (mapv valid-row expected))
@@ -40,7 +42,7 @@
   (case (:type err)
     :missing-rows (valid-missing-rows err)))
 
-(deftest internal-sim-test
+(deftest ^:focus internal-sim-test
   (let [test' (run-workload! {:log-sql   true
                               :workload  :internal-sim
                               :isolation :read-uncommitted})
@@ -49,6 +51,7 @@
     (is (pos? (:error-count res)))
     (is (pos? (:txn-count res)))
     (let [e (first (:errors res))]
+      (pprint e)
       (valid-error e))))
 
 (deftest internal-sim-test-serializable
