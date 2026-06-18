@@ -324,8 +324,8 @@
   "Returns a Delay which will generate a new Case for case number i."
   [i]
   (-> (sql.gen/generate {:max-statement-count 4096
-                         :max-table-count 1
-                         :max-column-count 2})
+                         :max-table-count 2
+                         :max-column-count 4})
       (unique-tables i)
       delay))
 
