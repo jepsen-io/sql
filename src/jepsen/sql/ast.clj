@@ -66,16 +66,6 @@
   (sql [_]
     ["?" x]))
 
-; Represents a table name like 't'
-(defrecord TableName [name]
-  SQL
-  (sql [_] name))
-
-; Represents an equality comparison like `name = 'regina'
-(defrecord Equals [left right]
-  SQL
-  (sql [_]
-    (splice "(" (sql left) " = " (sql right) ")")))
 
 ; Represents a column used as a part of a table.
 (defrecord Column
@@ -122,6 +112,24 @@
   (teardown [_]
     [(Statement. [(str "DROP TABLE " name)])]))
 
+; Represents a table name like 't'
+(defrecord TableName [name]
+  SQL
+  (sql [_] name))
+
+(defn table-name
+  "Constructs a TableName from either a Column or a string."
+  [table]
+  (cond (string? table)
+        (TableName. table)
+
+        (instance? Table table)
+        (TableName. (:name table))
+
+        true
+        (throw (IllegalArgumentException.
+                 "Expected a string column name or a Column"))))
+
 ; A Schema defines a collection of tables, and also some common values you
 ; might use to work with them.
 (defrecord Schema
@@ -147,6 +155,17 @@
             (splice* ", " (map sql values))
             ")")))
 
+;; Expressions
+
+; Represents an equality comparison like `name = 'regina'
+(defrecord Equals [left right]
+  SQL
+  (sql [_]
+    (splice "(" (sql left) " = " (sql right) ")")))
+
+
+;; Statements
+
 (defn insert
   "Constructs an Insert."
   [table cols values]
@@ -164,7 +183,7 @@
                    ]
   SQL
   (sql [_]
-    (splice [(str "UPDATE " (sql table) " SET ")]
+    (splice "UPDATE " (sql table) " SET "
             (splice* ", "
                      (map (fn [[col expr]]
                             (splice (sql col) " = " (sql expr)))
@@ -172,6 +191,21 @@
             (when where
               (splice " WHERE " (sql where))))))
 
+; A DELETE statement like "DELETE FROM treats WHERE tasty FALSE"
+(defrecord Delete [table ; A TableName
+                   where ; A predicate expression
+                   ]
+  SQL
+  (sql [_]
+    (splice "DELETE FROM " (sql table)
+            (when where
+              (splice " WHERE " (sql where))))))
+
+(defn delete
+  "Constructs a Delete."
+  [table where]
+  (assert (satisfies? SQL) where)
+  (Delete. (table-name table) where))
 
 ; Represents a select statement like `select * from people where name =
 ; regina`.

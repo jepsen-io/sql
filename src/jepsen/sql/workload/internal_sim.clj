@@ -31,6 +31,7 @@
             [clj-commons.slingshot :refer [try+ throw+]]
             [tesser.core :as t])
   (:import (jepsen.sql.ast ColumnName
+                           Delete
                            Equals
                            Insert
                            Literal
@@ -114,16 +115,17 @@
          (map (partial into (sorted-map)))
          (into (sorted-set-by sort-fn)))))
 
-(defn check-mop
-  "Checks a single micro-operation. Takes a State and a pair of [statement
-  results]. Returns a new State, or an error map."
-  [state [statement results]]
-  ;(pprint state)
-  ;(prn (sql statement))
-  ;(prn '-> results)
-  (condp instance? statement
-    ; When we have an insert, we know its rows become a part of the state map.
-    Insert
+(defprotocol CheckStatement
+  (check-statement [statement state results]
+                   "Checks a single statement. Takes a statement, a State, and
+                   the results of evaluating the statement. Returns either a
+                   new State or an error map, if we can show the statement was
+                   inconsistent with this State."))
+
+(extend-protocol CheckStatement
+  ; When we have an insert, we know its rows become a part of the state map.
+  Insert
+  (check-statement [statement state results]
     (if (map? results)
       ; Error
       state
@@ -135,69 +137,102 @@
                               (eval-expr expr nil)))
                        ; And zip together with columns
                        (zipmap (map (comp keyword :name) (:cols statement))))]
-        (update-in state [:tables table :rows] conj row)))
+        (update-in state [:tables table :rows] conj row))))
 
     ; When we perform an update, we apply it to the rows we know about.
     Update
-    (if (map? results)
-      ; Error
-      state
-      ; Success
-      (let [table (:name (:table statement))
-            where (:where statement)
-            rows  (get-in state [:tables table :rows])]
-        ; Work through each row, transforming it if it matches the predicate
-        (loopr [rows'        rows
-                update-count 0]
-               [row rows]
-               (if (or (nil? where) (eval-expr where row))
-                 (recur (-> rows'
-                            (disj row)
-                            (conj (update-row row (:set statement))))
-                        (inc update-count))
-                 (recur rows' update-count))
-               ; We know a subset of the DB, so would be bad if we updated more
-               ; rows than the database did!
-               (cond (< (:next.jdbc/update-count (first results))
-                            update-count)
-                     (reduced {:type      :not-enough-updated-rows
-                               :statement (sql statement)
-                               :expected  [:at-least update-count]
-                               :actual    (first results)
-                               :rows      (sorted-rows state table rows)})
+    (check-statement [statement state results]
+      (if (map? results)
+        ; Error
+        state
+        ; Success
+        (let [table (:name (:table statement))
+              where (:where statement)
+              rows  (get-in state [:tables table :rows])]
+          ; Work through each row, transforming it if it matches the predicate
+          (loopr [rows'        rows
+                  update-count 0]
+                 [row rows]
+                 (if (or (nil? where) (eval-expr where row))
+                   (recur (-> rows'
+                              (disj row)
+                              (conj (update-row row (:set statement))))
+                          (inc update-count))
+                   (recur rows' update-count))
+                 ; We know a subset of the DB, so would be bad if we updated
+                 ; more rows than the database did!
+                 (cond (< (:next.jdbc/update-count (first results))
+                          update-count)
+                       (reduced {:type      :not-enough-updated-rows
+                                 :statement (sql statement)
+                                 :expected  [:at-least update-count]
+                                 :actual    (first results)
+                                 :rows      (sorted-rows state table rows)})
 
-                     ; OK, all set
-                     true
-                     (assoc-in state [:tables table :rows] rows')))))
+                       ; OK, all set
+                       true
+                       (assoc-in state [:tables table :rows] rows'))))))
+
+    ; When we delete something, we destroy every matching row in our set.
+    Delete
+    (check-statement [statement state results]
+      (if (map? results)
+        ; Error
+        state
+        ; Success
+        (let [table (:name (:table statement))
+              where (:where statement)
+              rows  (get-in state [:tables table :row])]
+          ; Delete each row matching the predicate
+          (loopr [rows'         rows
+                  update-count  0]
+                 [row rows]
+                 (if (or (nil? where) (eval-expr where row))
+                   (recur (disj rows' row)
+                          (inc update-count))
+                   (recur rows' update-count))
+                 ; We know a subset of the DB, so it would be bad if we deleted
+                 ; more rows than the DB did.
+                 (cond (< (:next.jdbc/update-count (first results))
+                          update-count)
+                       (reduced {:type :not-enough-updated-rows
+                                 :statement (sql statement)
+                                 :expected  [:at-least update-count]
+                                 :actual    (first results)
+                                 :rows      (sorted-rows state table rows)})
+                       ; All set
+                       true
+                       (assoc-in state [:tables table :rows] rows'))))))
 
     ; When we have a select, we evaluate the predicate against our state and
     ; ensure that all the rows we think should be present are present.
     Select
-    (if (map? results)
-      ; Error
-      state
-      ; Success
-      (let [table (:name (:table statement))
-            results (set results)
-            ; What rows should be present?
-            required (->> (get-in state [:tables table :rows])
-                          (filter
-                            (if-let [w (:where statement)]
-                              (partial eval-expr w)
-                              ; With no WHERE clause, you match everything
-                              (constantly true)))
-                          set)
-            ; Ugh these should be multisets, ah well
-            missing (set/difference required results)]
-        (if (seq missing)
-          (reduced {:type       :missing-rows
-                    :statement  (sql statement)
-                    :missing    (sorted-rows state table missing)
-                    :expected   (sorted-rows state table required)
-                    :actual     (sorted-rows state table results)})
+    (check-statement [statement state results]
+      (if (map? results)
+        ; Error
+        state
+        ; Success
+        (let [table (:name (:table statement))
+              results (set results)
+              ; What rows should be present?
+              required (->> (get-in state [:tables table :rows])
+                            (filter
+                              (if-let [w (:where statement)]
+                                (partial eval-expr w)
+                                ; With no WHERE clause, you match everything
+                                (constantly true)))
+                            set)
+              ; Ugh these should be multisets, ah well
+              missing (set/difference required results)]
+          (if (seq missing)
+            (reduced {:type       :missing-rows
+                      :statement  (sql statement)
+                      :missing    (sorted-rows state table missing)
+                      :expected   (sorted-rows state table required)
+                      :actual     (sorted-rows state table results)})
 
-          ; Success; we know these rows are present in the table
-          (update-in state [:tables table :rows] set/union results))))))
+            ; Success; we know these rows are present in the table
+            (update-in state [:tables table :rows] set/union results))))))
 
 (defn check-txn
   "Takes an initial State and a transaction, represented as a series of SQL AST
@@ -206,7 +241,8 @@
   [initial-state sql results]
   ;(prn)
   ;(println "## Check txn")
-  (let [r (reduce check-mop
+  (let [r (reduce (fn [state [statement results]]
+                    (check-statement statement state results))
                   initial-state
                   (mapv vector sql results))]
     ; More robust than checking for instance of State, with hot code reloading
