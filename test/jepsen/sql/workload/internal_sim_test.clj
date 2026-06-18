@@ -40,7 +40,7 @@
   (case (:type err)
     :missing-rows (valid-missing-rows err)))
 
-(deftest ^:focus internal-sim-test
+(deftest internal-sim-test
   (let [test' (run-workload! {:log-sql   true
                               :workload  :internal-sim
                               :isolation :read-uncommitted})
@@ -55,5 +55,4 @@
   (let [test' (run-workload! {:workload :internal-sim
                               :isolation :serializable})
         res (:internal (:results test'))]
-    (pprint res)
     (is (true? (:valid? res)))))
