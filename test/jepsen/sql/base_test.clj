@@ -133,6 +133,10 @@
 
         #"duplicate key value"
         {:type :duplicate-key-value, :definite? true}
+
+        #"relation .+ does not exist"
+        {:type :relation-does-not-exist, :definite? true}
+
         nil)
       nil)))
 
@@ -146,7 +150,7 @@
    :concurrency        3
    :isolation          :serializable
    :max-txn-length     4
-   :mop-delay          0
+   :mop-delay          1
    :key-types          (vec sql/key-types)
    :upsert-types       (vec sql/upsert-types)
    :linearizable-keys? true
@@ -155,8 +159,8 @@
    ; We're going to run a bunch of our own tests here and the log noise is
    ; incredible. Uncomment these for details.
    {:overrides
-    #_nil
-    {"jepsen.core" :warn
+    nil
+    #_{"jepsen.core" :warn
        "jepsen.db" :warn
        "jepsen.print" :warn
        "jepsen.store" :warn
@@ -178,5 +182,5 @@
                      :name      (name workload-name)
                      :generator (->> (:generator workload)
                                      (gen/clients)
-                                     (gen/limit 1000))})]
+                                     (gen/limit 1024))})]
     (jepsen/run! test)))

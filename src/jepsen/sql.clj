@@ -5,8 +5,8 @@
             [jepsen.sql [encoding :as encoding]]
             [jepsen.sql.workload [append :as append]
                                  [internal :as internal]
+                                 [internal-sim :as internal-sim]
                                  [rw :as rw]]))
-
 
 (def key-types
   "The various ways we can select something by logical key."
@@ -133,7 +133,8 @@
          wrap (fn wrap [workload-fn]
                 (fn workload [cli-opts]
                   (workload-fn (merge cli-opts sql-opts))))]
-     (update-vals {:append   append/workload
-                   :internal internal/workload
-                   :rw       rw/workload}
+     (update-vals {:append        append/workload
+                   :internal      internal/workload
+                   :internal-sim  internal-sim/workload
+                   :rw            rw/workload}
                   wrap)))

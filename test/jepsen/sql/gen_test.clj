@@ -23,48 +23,48 @@
   (rand/with-seed 0
     (let [case (generate {})]
       ;(mapv (comp prn sql) (:statements case))
-      (is (= [["CREATE TABLE t (c int PRIMARY KEY, a int, d int, b int, e int, f int)"]
-              ["CREATE TABLE v (b int, f int PRIMARY KEY, a int, c int, e int, d int)"]
-              ["CREATE TABLE u (f int)"]]
+      (is (= (mapv ->Statement
+                   [["CREATE TABLE t (b int PRIMARY KEY, a int, c int, d int)"]
+                    ["CREATE TABLE v (a int, c int PRIMARY KEY, b int, d int)"]
+                    ["CREATE TABLE u (d int)"]])
              (setup case)))
-      (is (= ["DROP TABLE t" "DROP TABLE v" "DROP TABLE u"]
+      (is (= (mapv ->Statement [["DROP TABLE t"] ["DROP TABLE v"] ["DROP TABLE u"]])
              (teardown case)))
-      (is (= [["SELECT * FROM u"]
+      (is (= [
               ["SELECT * FROM v"]
-              ["INSERT INTO v(b, c, e, f, a, d) VALUES (?, ?, ?, ?, ?, ?)"
-               -2703
-               8102
-               -3
-               -293844
-               -100218
-               173829]
-              ["SELECT * FROM u"]
-              ["SELECT * FROM u"]
-              ["INSERT INTO t(c, a, d, b, e, f) VALUES (?, ?, ?, ?, ?, ?)"
-               -3
-               52
-               1235
-               3802968
-               -3782491
-               -1806915]
-              ["SELECT * FROM t"]
-              ["SELECT * FROM u"]
-              ["SELECT * FROM v"]
-              ["SELECT * FROM v"]
-              ["INSERT INTO v(c, d, a, e, f, b) VALUES (?, ?, ?, ?, ?, ?)"
-               6
-               12104218
-               8047261
-               -1056524485
-               -2142060654
-               87129]
-              ["SELECT * FROM u"]
-              ["INSERT INTO v(c, a, e, b, d, f) VALUES (?, ?, ?, ?, ?, ?)"
-               384963227
-               18
-               -153
-               623602
-               -2
-               0]]
+           ["SELECT * FROM v"]
+           ["UPDATE v SET b = ?, d = ?, a = ?, c = ? WHERE (? = a)"
+            7
+            -3805594
+            9
+            -25
+            726]
+           ["SELECT * FROM v WHERE (b = c)"]
+           ["INSERT INTO v (a, c, b, d) VALUES ?, ?, ?, ?"
+            1
+            -12
+            176
+            -299907300]
+           ["UPDATE t SET d = ? WHERE (? = c)" 129876556 21229]
+           ["SELECT * FROM v"]
+           ["SELECT * FROM u WHERE (d = ?)" 36092]
+           ["INSERT INTO u (d) VALUES ?" -1]
+           ["SELECT * FROM u WHERE (? = ?)" -36273 57]
+           ["UPDATE v SET a = ?, b = ?, d = ?, c = ? WHERE (c = c)"
+            -162
+            -3
+            -107191
+            1072218635]
+           ["INSERT INTO v (a, c, b, d) VALUES ?, ?, ?, ?"
+            -40029
+            -300
+            -15583
+            3]
+           ["INSERT INTO v (c, d, b, a) VALUES ?, ?, ?, ?"
+            384963227
+            18
+            -153
+            -2]
+              ]
              (mapv sql (:statements case)))))))
 
