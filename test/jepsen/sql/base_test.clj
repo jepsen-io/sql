@@ -159,8 +159,8 @@
    ; We're going to run a bunch of our own tests here and the log noise is
    ; incredible. Uncomment these for details.
    {:overrides
-    nil
-    #_{"jepsen.core" :warn
+    #_nil
+    {"jepsen.core" :warn
        "jepsen.db" :warn
        "jepsen.print" :warn
        "jepsen.store" :warn

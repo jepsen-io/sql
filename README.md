@@ -105,7 +105,8 @@ Error maps can have other keys at your discretion.
 
 ### Internal
 
-The [internal](src/jepsen/sql/internal.clj) workload checks for [internal
+The [internal](src/jepsen/sql/workload/internal.clj) workload checks for
+[internal
 consistency](https://drops.dagstuhl.de/storage/00lipics/lipics-vol042-concur2015/LIPIcs.CONCUR.2015.58/LIPIcs.CONCUR.2015.58.pdf)
 (i.e. within individual transactions). It performs simple transactions over a
 map of integer keys to integer values. These keys are stored in a table like
@@ -142,10 +143,24 @@ observed the value `6`, and then immediately again, observing `nil`. The first
 faulty micro-operation was `[:r 474 nil]`; we expected to observe `6`, but
 actually observed `nil`. This transaction violates Read Atomic.
 
+### Internal Sim
+
+The [internal-sim](src/jepsen/sql/workload/internal_sim.clj) test is another
+approach to verifying internal consistency. It generates random schemas and
+transactions over them, then within each transaction, simulates the effects of
+that transaction to build up a lower bound on the state of the database. It
+flags situations where a select should have observed a row we know existed, but
+did not, or where update or delete affected fewer rows than we know they should
+have.
+
+Internal-sim should, but does not, maintain a corresponding *upper* bound; it
+is unable to identify that a transaction which deletes everything, then reads a
+row, has violated internal consistency.
+
 ### RW
 
-The [rw](src/jepsen/sql/rw.clj) workload looks for transactional consistency
-over a map of integer keys to integer values using
+The [rw](src/jepsen/sql/workload/rw.clj) workload looks for transactional
+consistency over a map of integer keys to integer values using
 [Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
 spread across several tables, and accesses them either by primary or secondary
 key. Transactions perform a mix of reads and writes of unique (for that key)
@@ -154,6 +169,8 @@ from there infers constraints on the dependency graph between transactions. It
 looks for a variety of transactional anomalies based both on cycle detection
 and other heuristics. For more details, see Elle's
 [rw-register](https://github.com/jepsen-io/elle/blob/main/src/elle/rw_register.clj).
+
+RW can encode values in several different ways; see `--encodings`.
 
 In general, the `append` workload is much better at inferring transactional
 anomalies. However, `rw` may help narrow down failures.
@@ -172,6 +189,8 @@ heuristics, and from there infers constraints on the dependency graph between
 transactions. It looks for a variety of transactional anomalies based both on
 cycle detection and other heuristics. For more details, see Elle's
 [list-append](https://github.com/jepsen-io/elle/blob/main/src/elle/list_append.clj).
+
+Append can indirect operations through a second lookup table.
 
 ## License
 
