@@ -128,6 +128,7 @@
   ; When we have an insert, we know its rows become a part of the state map.
   Insert
   (check-statement [statement state results]
+    (info :check-statement :insert)
     (if (map? results)
       ; Error
       state
@@ -144,6 +145,7 @@
     ; When we perform an update, we apply it to the rows we know about.
     Update
     (check-statement [statement state results]
+      (info :check-statement :update)
       (if (map? results)
         ; Error
         state
@@ -187,7 +189,7 @@
         ; Success
         (let [table (:name (:table statement))
               where (:where statement)
-              rows  (get-in state [:tables table :row])]
+              rows  (get-in state [:tables table :rows])]
           ; Delete each row matching the predicate
           (loopr [rows'         rows
                   update-count  0]
@@ -213,6 +215,7 @@
     ; ensure that all the rows we think should be present are present.
     Select
     (check-statement [statement state results]
+      (info :check-statement :select)
       (if (map? results)
         ; Error
         state

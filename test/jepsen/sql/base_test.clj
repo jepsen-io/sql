@@ -150,7 +150,7 @@
    :concurrency        3
    :isolation          :serializable
    :max-txn-length     4
-   :mop-delay          1
+   :mop-delay          5
    :key-types          (vec sql/key-types)
    :upsert-types       (vec sql/upsert-types)
    :linearizable-keys? true

@@ -7,6 +7,7 @@
                      [test :refer :all]]
             [clojure.tools.logging :refer [info warn]]
             [multiset.core :as multiset :refer [multiset multiset?]]
+            [jepsen [random :as rand]]
             [jepsen.sql.base-test :refer :all]))
 
 (defn valid-row
@@ -42,17 +43,18 @@
   (case (:type err)
     :missing-rows (valid-missing-rows err)))
 
-(deftest ^:focus internal-sim-test
-  (let [test' (run-workload! {:log-sql   true
-                              :workload  :internal-sim
-                              :isolation :read-uncommitted})
-        res (:internal (:results test'))]
-    (is (false? (:valid? res)))
-    (is (pos? (:error-count res)))
-    (is (pos? (:txn-count res)))
-    (let [e (first (:errors res))]
-      (pprint e)
-      (valid-error e))))
+(deftest internal-sim-test
+  (rand/with-seed 13
+    (let [test' (run-workload! {:log-sql   true
+                                :workload  :internal-sim
+                                :isolation :read-uncommitted})
+          res (:internal (:results test'))]
+      (is (false? (:valid? res)))
+      (is (pos? (:error-count res)))
+      (is (pos? (:txn-count res)))
+      (let [e (first (:errors res))]
+        ;(pprint e)
+        (valid-error e)))))
 
 (deftest internal-sim-test-serializable
   (let [test' (run-workload! {:workload :internal-sim
