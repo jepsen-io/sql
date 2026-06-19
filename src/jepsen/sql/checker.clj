@@ -9,7 +9,8 @@
   We offer a checker which looks for these errors. This checker is
   automatically composed with each workload checker."
   (:require [jepsen [checker :as checker]
-                    [history :as h]]
+                    [history :as h]
+                    [util :refer [map-vals]]]
             [tesser [core :as t]]
             [clj-commons.slingshot :refer [try+ throw+]]))
 
@@ -79,7 +80,8 @@
                            (if (seq remaining-nodes)
                              ; Waiting for a node to complete a transaction.
                              (if (h/ok? op)
-                               (disj remaining-nodes (process->node (:process op)))
+                               (disj remaining-nodes
+                                     (process->node (:process op)))
                                remaining-nodes)
                              ; Done
                              (reduced (:index op))))
@@ -98,12 +100,14 @@
                                        :table-not-found}
                                       (:type (:error op))))))
                    (t/group-by (comp :type :error))
-                   (t/fuse {:count   (t/count)
-                            :example (t/first)})
+                   (t/into [])
                    (h/tesser history))]
           {:valid?      (empty? errors)
            :error-types (keys errors)
-           :errors      errors})))))
+           :errors      (map-vals (fn [errors]
+                                    {:count (count errors)
+                                     :example (first errors)})
+                                  errors)})))))
 
 (defn missing-table-column-checker
   "This checker looks for 'table not found' or 'column not found' errors; it
