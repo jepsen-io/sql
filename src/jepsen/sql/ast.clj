@@ -26,13 +26,15 @@
   "Splices n SQL vectors or strings together. We do this by concatenating
   their strings and remaining parameters. Nil vanishes."
   ([a]
-   a)
+   (if (string? a)
+     [a]
+     a))
   ([a b]
-   (cond (nil? a) b
-         (nil? b) a
+   (cond (nil? a) (splice b)
+         (nil? b) (splice a)
          true (if (string? a)
                 (if (string? b)
-                  (str a b)
+                  [(str a b)]
                   (assoc b 0 (str a (first b))))
                 (if (string? b)
                   (assoc a 0 (str (first a) b))
@@ -204,7 +206,7 @@
 (defn delete
   "Constructs a Delete."
   [table where]
-  (assert (satisfies? SQL) where)
+  (assert (or (nil? where) (satisfies? SQL where)))
   (Delete. (table-name table) where))
 
 ; Represents a select statement like `select * from people where name =

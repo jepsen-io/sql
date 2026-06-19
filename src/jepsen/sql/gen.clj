@@ -301,6 +301,13 @@
           where (gen-where opts schema table)]
     (Update. (TableName. (:name table)) set where)))
 
+(defn gen-delete
+  "Generator of Deletes."
+  [opts schema]
+  (g/let [table (g/elements (:tables schema))
+          where (gen-where opts schema table)]
+    (delete table where)))
+
 (defn gen-select
   "Generator of select statements"
   [opts schema]
@@ -314,7 +321,8 @@
   [opts schema]
   (g/frequency [[8 (gen-select opts schema)]
                 [8 (gen-insert opts schema)]
-                [4 (gen-update opts schema)]]))
+                [8 (gen-update opts schema)]
+                [1 (gen-delete opts schema)]]))
 
 (defn gen-case
   "Generator for a Case. Options:
