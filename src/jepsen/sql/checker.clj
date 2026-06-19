@@ -13,14 +13,12 @@
             [tesser [core :as t]]
             [clj-commons.slingshot :refer [try+ throw+]]))
 
-(defrecord SQLChecker []
+(defrecord CriticalChecker []
   checker/Checker
   (check [this test history opts]
     (let [errs (->> (t/filter (fn filter [op]
-                                (when (h/info? op)
-                                  (when-let [e (:type (:error op))]
-                                    (when (= "jepsen.sql" (namespace e))
-                                      true)))))
+                                (and (h/info? op)
+                                     (:critical? (:error op)))))
                     (t/group-by (comp :type :error))
                     (t/into [])
                     (h/tesser history))]
@@ -28,13 +26,18 @@
        :error-types (sort (keys errs))
        :errors      errs})))
 
+(defn critical-checker
+  "A checker that looks for ops that have a `:critical? true` `:error` map."
+  []
+  (CriticalChecker.))
+
 (defn compose
   "Takes an existing workload checker and composes it with our SQL checker,
   naming the original checker the given key."
   [checker k]
   (checker/compose
     {k     checker
-     :sql  (SQLChecker.)}))
+     :sql  (CriticalChecker.)}))
 
 ;; Some common assertions that will trigger our checker
 
@@ -45,8 +48,9 @@
    (assert-at-most-one coll nil))
   ([coll m]
    (when (< 1 (count coll))
-     (throw+ (merge {:type :jepsen.sql/too-many
-                     :coll coll}
+     (throw+ (merge {:type      :jepsen.sql/too-many
+                     :critical? true
+                     :coll      coll}
                     m)))
    coll))
 
@@ -58,7 +62,51 @@
   ([type x m]
    (when-not (or (nil? x) (instance? type x))
      (throw+ (merge {:type      :jepsen.sql/wrong-type
+                     :critical? true
                      :expected  (symbol (.getName type))
                      :actual    (symbol (.getName (class x)))
                      :value     x})))
    x))
+
+(defrecord MissingTableColumnChecker []
+  checker/Checker
+  (check [this test history opts]
+    (let [process->node (fn [process]
+                          (mod process (count (:nodes test))))
+          ; First pass: look for the first successful transaction on each node.
+          ; This should be very quick.
+          cutoff (reduce (fn [remaining-nodes op]
+                           (if (seq remaining-nodes)
+                             ; Waiting for a node to complete a transaction.
+                             (if (h/ok? op)
+                               (disj remaining-nodes (process->node (:process op)))
+                               remaining-nodes)
+                             ; Done
+                             (reduced (:index op))))
+                         (set (range (count (:nodes test))))
+                         history)]
+      (if (set? cutoff)
+        {:valid? :false
+         :error  "Some nodes never executed an OK operation"
+         :nodes  (map (:nodes test) (sort cutoff))}
+        ; Second pass: look for column or table not found errors *after*
+        ; those OK ops.
+        (let [errors
+              (->> (t/filter (fn [op]
+                               (and (<= cutoff (:index op))
+                                    (#{:column-not-found
+                                       :table-not-found}
+                                      (:type (:error op))))))
+                   (t/group-by (comp :type :error))
+                   (t/fuse {:count   (t/count)
+                            :example (t/first)})
+                   (h/tesser history))]
+          {:valid?      (empty? errors)
+           :error-types (keys errors)
+           :errors      errors})))))
+
+(defn missing-table-column-checker
+  "This checker looks for 'table not found' or 'column not found' errors; it
+  would be bad if these happened after the initial setup in some workloads."
+  []
+  (MissingTableColumnChecker.))

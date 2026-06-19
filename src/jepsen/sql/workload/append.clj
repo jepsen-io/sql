@@ -6,13 +6,14 @@
                      [string :as str]]
             [dom-top.core :refer [loopr with-retry]]
             [elle.core :as elle]
-            [jepsen [core :as jepsen]
+            [jepsen [checker :as checker]
+                    [core :as jepsen]
                     [generator :as gen]
                     [util :as util]
                     [random :as rand]]
             [jepsen.sql [base :as base]
                         [client :as c]
-                        [checker :as checker
+                        [checker :as sc
                          :refer [assert-at-most-one
                                  assert-instance-or-nil]]]
             [jepsen.tests.cycle.append :as append]
@@ -363,5 +364,10 @@
       (assoc :client (c/client
                        (map->Client {:next-id (atom 0)})
                        opts))
-      (update :checker checker/compose :append)
+      (update :checker (fn [append-checker]
+                         (checker/compose
+                           {:append    append-checker
+                            :critical  (sc/critical-checker)
+                            :missing-table-column
+                            (sc/missing-table-column-checker)})))
       (update :generator ro-gen)))

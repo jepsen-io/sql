@@ -9,7 +9,7 @@
                      [string :as str]]
             [dom-top.core :refer [loopr with-retry]]
             [elle.core :as elle]
-            [jepsen [checker]
+            [jepsen [checker :as checker]
                     [client :as client]
                     [core :as jepsen]
                     [generator :as gen]
@@ -17,8 +17,8 @@
                     [random :as rand]
                     [util :as util]]
             [jepsen.sql [client :as c]
-                        [checker :as checker :refer [assert-at-most-one
-                                                     assert-instance-or-nil]]
+             [checker :as sc :refer [assert-at-most-one
+                                     assert-instance-or-nil]]
                         [encoding :as encoding]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
@@ -157,7 +157,7 @@
            nil)))
 
 (defrecord Checker []
-  jepsen.checker/Checker
+  checker/Checker
   (check [this test history opts]
     (let [{:keys [n errors]}
           (->> (t/filter h/ok?)
@@ -177,4 +177,8 @@
   [opts]
   {:generator (gen)
    :client    (c/client (Client. nil nil) opts)
-   :checker   (checker/compose (Checker.) :internal)})
+   :checker   (checker/compose
+                {:internal (Checker.)
+                 :critical (sc/critical-checker)
+                 :missing-table-column
+                 (sc/missing-table-column-checker)})})

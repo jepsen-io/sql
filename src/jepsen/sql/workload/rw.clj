@@ -6,16 +6,16 @@
                      [string :as str]]
             [dom-top.core :refer [loopr with-retry]]
             [elle.core :as elle]
-            [jepsen
-             [core :as jepsen]
-             [generator :as gen]
-             [random :as rand]
-             [util :as util]]
+            [jepsen [checker :as checker]
+                    [core :as jepsen]
+                    [generator :as gen]
+                    [random :as rand]
+                    [util :as util]]
             [jepsen.checker.timeline :as timeline]
             [jepsen.tests.cycle.wr :as wr]
             [jepsen.sql [client :as c]
-                        [checker :as checker :refer [assert-instance-or-nil
-                                                     assert-at-most-one]]
+                        [checker :as sc :refer [assert-instance-or-nil
+                                                assert-at-most-one]]
                         [encoding :as encoding]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
@@ -247,9 +247,21 @@
   (ROGen. gen #{}))
 
 (defn workload
-  "A list append workload. Special options:
+  "A read-write register workload. Options:
 
-    - :encodings: A collection of encoding keywords. See jepsen.sql.encoding."
+      :encodings: A collection of encoding keywords. See jepsen.sql.encoding.
+      :isolation          The isolation level for our transactions, e.g.
+                          :serializable or :read-uncommitted.
+      :key-count          For Elle, the number of active keys at any given time
+      :key-dist           For Elle, a distribution like :exponential
+      :max-txn-length     For Elle, the maximum number of ops in a transaction
+      :max-writes-per-key For Elle, the maximum number of writes we attempt
+                          per key
+      :key-types          A vector of keywords for strategies we use to look up
+                          a row. May include :primary, :secondary.
+      :upsert-types       A vector of keywords for strategies we use for
+                          upserts. Can include :insert-update-update,
+                          :on-conflict, or :copy-on-write"
   [opts]
   (-> (wr/test (assoc (select-keys opts [:key-count
                                          :key-dist
@@ -261,5 +273,10 @@
                       :min-txn-length 1
                       :consistency-models [(:expected-consistency-model opts)]))
       (assoc :client (c/client (Client. (tables opts) nil) opts))
-      (update :checker checker/compose :rw)
+      (update :checker (fn [rw-checker]
+                         (checker/compose
+                           {:rw rw-checker
+                            :critical (sc/critical-checker)
+                            :missing-table-column
+                            (sc/missing-table-column-checker)})))
       (update :generator ro-gen)))

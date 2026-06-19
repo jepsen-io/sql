@@ -29,6 +29,7 @@
   (when x
     (when-not (re-find #"^-?\d*$" x)
       (throw+ {:type :jepsen.sql/wrong-format
+               :critical? true
                :expected "A series of digits"
                :actual   x}))
     (parse-long x)))
@@ -42,6 +43,7 @@
               (when-not (or (nil? x)
                             (integer? x))
                 (throw+ {:type :jepsen.sql/wrong-type
+                         :critical? true
                          :expected "some kind of integer"
                          :actual   (class x)
                          :value    x}))
@@ -80,11 +82,13 @@
                   (try (.longValueExact ^BigDecimal x)
                        (catch ArithmeticException e
                          (throw+ {:type :jepsen.sql/unexpected-fractional-part
+                                  :critical? true
                                   :expected "A BigDecimal like 123.0M"
                                   :actual   x})))
                   (if-let [[m sign digits] (re-find #"^(-?)0.(\d+)$" (str x))]
                     (parse-long (str sign (str/join (reverse digits))))
                     (throw+ {:type :jepsen.sql/unexpected-integral-part
+                             :critical? true
                              :expected "A BigDecimal like 0.321M"
                              :actual x})))))}
 

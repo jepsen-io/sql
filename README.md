@@ -4,6 +4,98 @@ These are common workloads for testing SQL databases using Jepsen and JDBC. A
 Jepsen test for (e.g.) Postgres can use this library to generate transactions,
 submit them over a JDBC client, and evaluate their correctness.
 
+## Workloads
+
+### Internal
+
+The [internal](src/jepsen/sql/workload/internal.clj) workload checks for
+[internal
+consistency](https://drops.dagstuhl.de/storage/00lipics/lipics-vol042-concur2015/LIPIcs.CONCUR.2015.58/LIPIcs.CONCUR.2015.58.pdf)
+(i.e. within individual transactions). It performs simple transactions over a
+map of integer keys to integer values. These keys are stored in a table like
+so:
+
+```sql
+CREATE TABLE IF NOT EXISTS internal (
+  id int not null primary key,
+  val integer
+)
+```
+
+Transactions can insert, update, and read values by key, generally interacting
+with a small pool of keys which constantly rotate over time. We then check the
+internal consistency of each individual transaction by playing forward each
+operation it performed, and ensuring that reads observe the effects of previous
+operations. Errors from this workload look like:
+
+```clj
+{:op {:index 5414,
+      :time 13880933098,
+      :type :ok,
+      :process 3,
+      :f :txn,
+      :value [[:r 474 6] [:r 474 nil]]},
+ :mop [:r 474 nil],
+ :k 474,
+ :expected 6,
+ :actual nil}
+```
+
+This transaction performed two micro-operations: a read of key `474` which
+observed the value `6`, and then immediately again, observing `nil`. The first
+faulty micro-operation was `[:r 474 nil]`; we expected to observe `6`, but
+actually observed `nil`. This transaction violates Read Atomic.
+
+### Internal Sim
+
+The [internal-sim](src/jepsen/sql/workload/internal_sim.clj) test is another
+approach to verifying internal consistency. It generates random schemas and
+transactions over them, then within each transaction, simulates the effects of
+that transaction to build up a lower bound on the state of the database. It
+flags situations where a select should have observed a row we know existed, but
+did not, or where update or delete affected fewer rows than we know they should
+have.
+
+Internal-sim should, but does not, maintain a corresponding *upper* bound; it
+is unable to identify that a transaction which deletes everything, then reads a
+row, has violated internal consistency.
+
+### RW
+
+The [rw](src/jepsen/sql/workload/rw.clj) workload looks for transactional
+consistency over a map of integer keys to integer values using
+[Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
+spread across several tables, and accesses them either by primary or secondary
+key. Transactions perform a mix of reads and writes of unique (for that key)
+integers. From there, Elle infers version orders based on a few heuristics, and
+from there infers constraints on the dependency graph between transactions. It
+looks for a variety of transactional anomalies based both on cycle detection
+and other heuristics. For more details, see Elle's
+[rw-register](https://github.com/jepsen-io/elle/blob/main/src/elle/rw_register.clj).
+
+RW can encode values in several different ways; see `--encodings`.
+
+In general, the `append` workload is much better at inferring transactional
+anomalies. However, `rw` may help narrow down failures.
+
+### Append
+
+The [append](sec/jepsen/sql/append.clj) workload looks for transactional
+consistency over a map of integer keys to lists of integer values, using over a
+map of integer keys to integer values using
+[Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
+spread across several tables, and encodes values as a `TEXT` field of
+comma-separated values. Transactions acceess rows either by primary or
+secondary key. Transactions perform a mix of reads and appends of unique (for
+that key) integers. From there, Elle infers version orders based on a few
+heuristics, and from there infers constraints on the dependency graph between
+transactions. It looks for a variety of transactional anomalies based both on
+cycle detection and other heuristics. For more details, see Elle's
+[list-append](https://github.com/jepsen-io/elle/blob/main/src/elle/list_append.clj).
+
+Append can indirect operations through a second lookup table.
+
+
 ## Usage
 
 SQL databases are all alike, except for the ways in which they are very
@@ -101,96 +193,26 @@ not to do this; if you write your own, you need to take care too.
 
 Error maps can have other keys at your discretion.
 
-## Workloads
+Any error map which has `:critical? true` will be reported as a failure by the
+`:sql` checker included in each workload. We use this to identify things the
+database should never do, like returning a string where it should have given a
+number.
 
-### Internal
+There are some well-known error types which may be helpful; we suggest you
+produce these if possible, as they help the workloads interpret various
+failures correctly. They are:
 
-The [internal](src/jepsen/sql/workload/internal.clj) workload checks for
-[internal
-consistency](https://drops.dagstuhl.de/storage/00lipics/lipics-vol042-concur2015/LIPIcs.CONCUR.2015.58/LIPIcs.CONCUR.2015.58.pdf)
-(i.e. within individual transactions). It performs simple transactions over a
-map of integer keys to integer values. These keys are stored in a table like
-so:
+-------------------------------------------------------------------------------
+`:type`                   Meaning
+------------------------  -----------------------------------------------------
+`:aborted`                A transaction has been aborted.
 
-```sql
-CREATE TABLE IF NOT EXISTS internal (
-  id int not null primary key,
-  val integer
-)
-```
+`:column-not-found`       An expected column does not exist. This is normal in
+                          some workloads, and disastrousi n others.
 
-Transactions can insert, update, and read values by key, generally interacting
-with a small pool of keys which constantly rotate over time. We then check the
-internal consistency of each individual transaction by playing forward each
-operation it performed, and ensuring that reads observe the effects of previous
-operations. Errors from this workload look like:
-
-```clj
-{:op {:index 5414,
-      :time 13880933098,
-      :type :ok,
-      :process 3,
-      :f :txn,
-      :value [[:r 474 6] [:r 474 nil]]},
- :mop [:r 474 nil],
- :k 474,
- :expected 6,
- :actual nil}
-```
-
-This transaction performed two micro-operations: a read of key `474` which
-observed the value `6`, and then immediately again, observing `nil`. The first
-faulty micro-operation was `[:r 474 nil]`; we expected to observe `6`, but
-actually observed `nil`. This transaction violates Read Atomic.
-
-### Internal Sim
-
-The [internal-sim](src/jepsen/sql/workload/internal_sim.clj) test is another
-approach to verifying internal consistency. It generates random schemas and
-transactions over them, then within each transaction, simulates the effects of
-that transaction to build up a lower bound on the state of the database. It
-flags situations where a select should have observed a row we know existed, but
-did not, or where update or delete affected fewer rows than we know they should
-have.
-
-Internal-sim should, but does not, maintain a corresponding *upper* bound; it
-is unable to identify that a transaction which deletes everything, then reads a
-row, has violated internal consistency.
-
-### RW
-
-The [rw](src/jepsen/sql/workload/rw.clj) workload looks for transactional
-consistency over a map of integer keys to integer values using
-[Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
-spread across several tables, and accesses them either by primary or secondary
-key. Transactions perform a mix of reads and writes of unique (for that key)
-integers. From there, Elle infers version orders based on a few heuristics, and
-from there infers constraints on the dependency graph between transactions. It
-looks for a variety of transactional anomalies based both on cycle detection
-and other heuristics. For more details, see Elle's
-[rw-register](https://github.com/jepsen-io/elle/blob/main/src/elle/rw_register.clj).
-
-RW can encode values in several different ways; see `--encodings`.
-
-In general, the `append` workload is much better at inferring transactional
-anomalies. However, `rw` may help narrow down failures.
-
-### Append
-
-The [append](sec/jepsen/sql/append.clj) workload looks for transactional
-consistency over a map of integer keys to lists of integer values, using over a
-map of integer keys to integer values using
-[Elle](https://github.com/jepsen-io/elle). It stores each key in a single row,
-spread across several tables, and encodes values as a `TEXT` field of
-comma-separated values. Transactions acceess rows either by primary or
-secondary key. Transactions perform a mix of reads and appends of unique (for
-that key) integers. From there, Elle infers version orders based on a few
-heuristics, and from there infers constraints on the dependency graph between
-transactions. It looks for a variety of transactional anomalies based both on
-cycle detection and other heuristics. For more details, see Elle's
-[list-append](https://github.com/jepsen-io/elle/blob/main/src/elle/list_append.clj).
-
-Append can indirect operations through a second lookup table.
+`:table-not-found`        An expected table does not exist. This is normal in
+                          some workloads, and disastrous in others.
+-------------------------------------------------------------------------------
 
 ## License
 
