@@ -278,7 +278,7 @@
           vals  (->> cols
                      (mapv (comp (partial gen-lit opts schema) :type))
                      (apply g/tuple))]
-    (insert (TableName. (:name table))
+    (insert table
             (mapv column-name cols)
             vals)))
 

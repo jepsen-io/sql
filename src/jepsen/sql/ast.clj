@@ -20,7 +20,7 @@
   (setup [this]
     "A vector of SQL statements that will create this thing.")
   (teardown [this]
-    "A vector of SQL statements that will tear dwon this thing."))
+    "A vector of SQL statements that will tear down this thing."))
 
 (defn splice
   "Splices n SQL vectors or strings together. We do this by concatenating
@@ -171,10 +171,9 @@
 (defn insert
   "Constructs an Insert."
   [table cols values]
-  (assert (instance? TableName table))
   (assert (every? (partial instance? ColumnName) cols))
   (assert (every? (partial satisfies? SQL) values))
-  (Insert. table cols values))
+  (Insert. (table-name table) cols values))
 
 
 ; An UPDATE statement like "UPDATE cats SET age = age + 1 WHERE name =
