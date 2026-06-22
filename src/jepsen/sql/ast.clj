@@ -224,15 +224,20 @@
   (setup    [_] (setup schema))
   (teardown [_] (teardown schema)))
 
-(defn unique-tables
-  "Rewrites all tables in a case to have a unique suffix, like t_1"
-  [case i]
+(defn rewrite-tables
+  "Rewrites all table names in a case using a function (f table-name-str)."
+  [case f]
   (walk/prewalk
     (fn rewrite [x]
       ; Ugh, this is going to break on hot code reloading because we define a
       ; new class for Table etc. with every defrecord, and they won't match
       (condp instance? x
-        Table     (update x :name str "_" i)
-        TableName (update x :name str "_" i)
+        Table     (update x :name f)
+        TableName (update x :name f)
         x))
     case))
+
+(defn unique-tables
+  "Rewrites all tables in a case to have a unique suffix, like t_1"
+  [case i]
+  (rewrite-tables #(str % "_" i)))
