@@ -8,7 +8,9 @@
             [clojure.tools.logging :refer [info warn]]
             [multiset.core :as multiset :refer [multiset multiset?]]
             [jepsen [random :as rand]]
-            [jepsen.sql.base-test :refer :all]))
+            [jepsen.sql [ast :as ast]
+                        [base-test :refer :all]]
+            [jepsen.sql.workload.internal-sim :refer :all]))
 
 (defn valid-row
   "Does a row look all right?"
@@ -17,8 +19,7 @@
     (is (keyword? col))))
 
 (defn valid-missing-rows
-  [{:keys [statement missing expected actual]}]
-  (is (vector? statement))
+  [{:keys [missing expected actual]}]
   (is (vector? missing))
   ; At least one thing should be missing
   (is (seq missing))
@@ -28,6 +29,22 @@
   ; All rows should be well-formed
   (mapv valid-row missing)
   (mapv valid-row expected))
+
+(defn valid-not-enough-updated-rows
+  [{:keys [expected actual rows]}]
+  (is (vector? expected))
+  (is (= :at-least (first expected)))
+  (is (pos? (second expected)))
+  (is (map? actual))
+  (is (= 1 (count actual)))
+  (is (= :next.jdbc/update-count (key (first actual))))
+  (mapv valid-row rows))
+
+(defn valid-unexpected-rows
+  [{:keys [negatory unexpected]}]
+  (is (vector? negatory))
+  (is (vector? unexpected))
+  (mapv valid-row unexpected))
 
 (defn valid-error
   [{:keys [index txn statement] :as err}]
@@ -41,22 +58,127 @@
   (is (vector? statement))
   (is (string? (first statement)))
   (case (:type err)
-    :missing-rows (valid-missing-rows err)))
+    :missing-rows (valid-missing-rows err)
+    :not-enough-updated-rows (valid-not-enough-updated-rows err)
+    :unexpected-rows (valid-unexpected-rows err)))
 
-(deftest internal-sim-test
+(def cats-table
+  (ast/table "cats"
+             [(ast/column "name" :text)
+              (ast/column "cuteness" :int)]))
+
+(def cats-col-names
+  (mapv ast/column-name (:cols cats-table)))
+
+(def cats-schema
+  (ast/schema [cats-table]))
+
+(deftest ^:focus delete-select-test
+  (let [schema  cats-schema
+        state   (initial-state cats-schema)
+        ; Delete every cat with cuteness 2
+        state   (check-statement
+                  (ast/delete "cats" (ast/equals
+                                       (ast/column-name "cuteness")
+                                       (ast/literal 2)))
+                  state
+                  [{:next.jdbc/update-count 3}])
+        ; Now let's select a cat and find that it has cuteness 2!
+        state    (check-statement
+                   (ast/select "cats" nil)
+                   state
+                   [{:name "professor meowington", :cuteness 2}])]
+    (is (= {:type :unexpected-rows
+            :statement ["SELECT * FROM cats"]
+            :negatory ["((cuteness = ?) OR ?)" 2 false]
+            :unexpected [{:name "professor meowington", :cuteness 2}]}
+           @state))))
+
+(deftest ^:focus delete-insert-select-test
+  (let [schema  cats-schema
+        state   (initial-state cats-schema)
+        ; Delete every cat with cuteness 2
+        state   (check-statement
+                  (ast/delete "cats" (ast/equals
+                                       (ast/column-name "cuteness")
+                                       (ast/literal 2)))
+                  state
+                  [{:next.jdbc/update-count 3}])
+        ; But add a specific cat, scamper, with cuteness 2
+        state (check-statement
+                (ast/insert "cats" cats-col-names
+                            [(ast/literal "scamper") (ast/literal 2)])
+                state
+                [{:next.jdbc/update-count 1}])
+        ; Now let's select all cats and find two, *one* of which is unexpected.
+        state    (check-statement
+                   (ast/select "cats" nil)
+                   state
+                   [{:name "professor meowington", :cuteness 2}
+                    {:name "scamper", :cuteness 2}])]
+    (is (= {:type :unexpected-rows
+            :statement ["SELECT * FROM cats"]
+            :negatory ["((NOT ((name = ?) AND (cuteness = ?))) AND ((cuteness = ?) OR ?))"
+                       "scamper" 2 2 false]
+            :unexpected [{:name "professor meowington", :cuteness 2}]}
+           @state))))
+
+(deftest ^:focus delete-update-select-test
+  (let [schema  cats-schema
+        state   (initial-state cats-schema)
+        ; Delete every cat with cuteness 2
+        state   (check-statement
+                  (ast/delete "cats" (ast/equals
+                                       (ast/column-name "cuteness")
+                                       (ast/literal 2)))
+                  state
+                  [{:next.jdbc/update-count 3}])
+        ; Now let's update scamper to have cuteness 2
+        state (check-statement
+                (ast/update "cats"
+                            [[(ast/column-name "cuteness")
+                              (ast/literal 2)]]
+                            (ast/equals
+                              (ast/column-name "name")
+                              (ast/literal "scamper")))
+                state
+                [{:next.jdbc/update-count 1}])
+        ; Now let's select all cats and find two. Professor meowington should
+        ; have been deleted, but scamper, on account of having been updated to
+        ; have cuteness 2, is OK.
+        state    (check-statement
+                   (ast/select "cats" nil)
+                   state
+                   [{:name "professor meowington", :cuteness 2}
+                    {:name "scamper", :cuteness 2}])]
+    (is (= {:type :unexpected-rows
+            :statement ["SELECT * FROM cats"]
+            :negatory ["((NOT ((cuteness = ?) AND (name = ?))) AND ((cuteness = ?) OR ?))"
+                       2 "scamper" 2 false]
+            :unexpected [{:name "professor meowington", :cuteness 2}]}
+           @state))))
+
+
+(deftest ^:slow ^:focus internal-sim-test
   (rand/with-seed 13
     (let [test' (run-workload! {:log-sql   true
                                 :workload  :internal-sim
-                                :isolation :read-uncommitted})
-          res (:internal (:results test'))]
+                                :isolation :read-uncommitted
+                                :limit     8192})
+          res (:internal (:results test'))
+          errs (:errors res)]
       (is (false? (:valid? res)))
       (is (pos? (:error-count res)))
       (is (pos? (:txn-count res)))
-      (let [e (first (:errors res))]
-        ;(pprint e)
-        (valid-error e)))))
+      (is (= #{:unexpected-rows
+               :missing-rows
+               :not-enough-updated-rows}
+             (set (map :type errs))))
+      (pprint errs)
+      (mapv valid-error errs))))
 
-(deftest internal-sim-test-serializable
+
+(deftest ^:slow internal-sim-test-serializable
   (let [test' (run-workload! {:workload :internal-sim
                               :isolation :serializable})
         res (:internal (:results test'))]

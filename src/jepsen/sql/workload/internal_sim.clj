@@ -40,38 +40,30 @@
                            Statement
                            Update)))
 
-(defprotocol Expr
-  (eval-expr [node row]
-             "Evaluates an AST expression in the context of a given row."))
-
-(extend-protocol Expr
-  ; Column names are looked up in the row.
-  ColumnName
-  (eval-expr [this row]
-    (get row (keyword (:name this)) :unknown))
-
-  ; Literals are themselves
-  Literal
-  (eval-expr [this row]
-    (:x this))
-
-  Equals
-  (eval-expr [this row]
-    (= (eval-expr (:left this) row)
-       (eval-expr (:right this) row))))
-
 (defn update-row
   "Takes a row and a series of [column expr] pairs. Returns the row with each
   column set to expr."
   [row pairs]
   (persistent!
     (reduce (fn [row [col expr]]
-              (assoc! row (keyword (:name col)) (eval-expr expr row)))
+              (assoc! row (keyword (:name col)) (ast/eval expr row)))
             (transient row)
             pairs)))
 
-
-(defrecord Table [pkey-fn sort-fn rows])
+(defrecord Table [; Function that takes a row and returns the primary key
+                  pkey-fn
+                  ; Function that sorts rows
+                  sort-fn
+                  ; A multiset of rows that we know definitely exist in the
+                  ; table.
+                  rows
+                  ; An Eval-able predicate of rows that we know *definitely
+                  ; do not exist* in the table. For example, if we DELETE ...
+                  ; WHERE wit = 'sharp', this predicate would be (wit = 'sharp'
+                  ; OR ...). If we can ever show that this predicate
+                  ; definitively intersects with at least one row
+                  ; affected/returned by a statement, then we've found a fault!
+                  neg])
 
 (defrecord State [tables])
 
@@ -102,7 +94,10 @@
                                   ; No columns left; must be equal
                                   0)))]
                 [(:name table)
-                 (Table. pkey-fn sort-fn (multiset/multiset))])))
+                 (Table. pkey-fn sort-fn
+                         (multiset/multiset)
+                         (ast/literal false)
+                         )])))
        (into (sorted-map))
        (State.)))
 
@@ -132,14 +127,23 @@
       ; Error
       state
       ; Success
-      (let [table (:name (:table statement))
-            row   (->> (:values statement)
-                       ; Evaluate each value
-                       (map (fn [expr]
-                              (eval-expr expr nil)))
-                       ; And zip together with columns
-                       (zipmap (map (comp keyword :name) (:cols statement))))]
-        (update-in state [:tables table :rows] conj row))))
+      (let [table-name (:name (:table statement))
+            table      (get (:tables state) table-name)
+            ; Add this row to the table's rows
+            row        (->> (:values statement)
+                            ; Evaluate each value
+                            (map (fn [expr]
+                                   (ast/eval expr nil)))
+                            ; And zip together with columns
+                            (zipmap (map (comp keyword :name)
+                                         (:cols statement))))
+            rows'     (conj (:rows table) row)
+            ; An insert also "pokes a hole" in our negative predicate.
+            neg' (ast/->And
+                   [(ast/->Not (ast/row->pred row))
+                    (:neg table)])]
+        (assoc-in state [:tables table-name]
+                  (assoc table :rows rows' :neg neg')))))
 
     ; When we perform an update, we apply it to the rows we know about.
     Update
@@ -148,35 +152,80 @@
         ; Error
         state
         ; Success
-        (let [table (:name (:table statement))
+        (let [table-name (:name (:table statement))
+              table (get (:tables state) table-name)
               where (:where statement)
-              rows  (get-in state [:tables table :rows])]
-          ; Work through each row, transforming it if it matches the predicate
-          (loopr [rows'        rows
-                  update-count 0]
-                 [row rows]
-                 (if (or (nil? where) (eval-expr where row))
-                   ; An interesting question: what happens if you come back
-                   ; around to modify the same row again? I *think* this is
-                   ; fine functionally; either row would be equivalent.
-                   (recur (-> rows'
-                              (disj row)
-                              (conj (update-row row (:set statement))))
-                          (inc update-count))
-                   (recur rows' update-count))
-                 ; We know a subset of the DB, so would be bad if we updated
-                 ; more rows than the database did!
-                 (cond (< (:next.jdbc/update-count (first results))
-                          update-count)
-                       (reduced {:type      :not-enough-updated-rows
-                                 :statement (ast/sql statement)
-                                 :expected  [:at-least update-count]
-                                 :actual    (first results)
-                                 :rows      (sorted-rows state table rows)})
+              ; Work through each row, transforming it if it matches the
+              ; predicate
+              rows'
+              (loopr [rows'        (:rows table)
+                      update-count 0]
+                     [row (:rows table)]
+                     (if (or (nil? where) (ast/eval where row))
+                       ; An interesting question: what happens if you come back
+                       ; around to modify the same row again? I *think* this is
+                       ; fine functionally; either row would be equivalent.
+                       (recur (-> rows'
+                                  (disj row)
+                                  (conj (update-row row (:set statement))))
+                              (inc update-count))
+                       (recur rows' update-count))
+                     ; We know a subset of the DB, so would be bad if we updated
+                     ; more rows than the database did!
+                     (cond (< (:next.jdbc/update-count (first results))
+                              update-count)
+                           (reduced
+                             {:type      :not-enough-updated-rows
+                              :statement (ast/sql statement)
+                              :expected  [:at-least update-count]
+                              :actual    (first results)
+                              :rows      (sorted-rows state table-name
+                                                      (:rows table))})
 
-                       ; OK, all set
-                       true
-                       (assoc-in state [:tables table :rows] rows'))))))
+                           ; OK, all set
+                           true
+                           rows'))
+              ; Our update also pokes holes in the negative predicate by
+              ; creating rows which a.) match the predicate and are b.)
+              ; transformed by the SET. The problem is that the SET clause can
+              ; do *arbitrary* transformations, which makes it hard to figure
+              ; out what the matching predicate would be. We can, however, do
+              ; some simple tricks. One of them is that if any of the columns
+              ; are set to a static value, we can use those to make a smaller
+              ; hole in neg.
+              set-preds
+              (->> (:set statement)
+                   (keep (fn [[col expr]]
+                           (when (ast/eval-without-row? expr)
+                             (Equals. col (ast/literal (ast/eval expr nil))))))
+                   vec)
+
+              ; If we can show that the WHERE does not depend on the
+              ; columns that we'll be changing, then the predicate would match
+              ; the same rows after the UPDATE as before; we can further
+              ; restrict ourselves to the WHERE clause.
+              set-preds (cond ; Everything's affected
+                              (nil? where)
+                              set-preds
+
+                              ; Shoot, the WHERE involves a modified column
+                              (seq (set/intersection
+                                     (ast/column-names-in where)
+                                     (set (map first (:set statement)))))
+                              set-preds
+
+                              ; Ha! We can further restrict it.
+                              true
+                              (conj set-preds where))
+              neg' (ast/->And [(ast/->Not (ast/->And set-preds))
+                               (:neg table)])]
+          (cond ; Error!
+                (reduced? rows')
+                rows'
+
+                true
+                (assoc-in state [:tables table-name]
+                          (assoc table :rows rows', :neg neg'))))))
 
     ; When we delete something, we destroy every matching row in our set.
     Delete
@@ -185,29 +234,44 @@
         ; Error
         state
         ; Success
-        (let [table (:name (:table statement))
-              where (:where statement)
-              rows  (get-in state [:tables table :rows])]
-          ; Delete each row matching the predicate
-          (loopr [rows'         rows
-                  update-count  0]
-                 [row rows]
-                 (if (or (nil? where) (eval-expr where row))
-                   (recur (disj rows' row)
-                          (inc update-count))
-                   (recur rows' update-count))
-                 ; We know a subset of the DB, so it would be bad if we deleted
-                 ; more rows than the DB did.
-                 (cond (< (:next.jdbc/update-count (first results))
-                          update-count)
-                       (reduced {:type :not-enough-updated-rows
-                                 :statement (ast/sql statement)
-                                 :expected  [:at-least update-count]
-                                 :actual    (first results)
-                                 :rows      (sorted-rows state table rows)})
-                       ; All set
-                       true
-                       (assoc-in state [:tables table :rows] rows'))))))
+        (let [table-name  (:name (:table statement))
+              where       (:where statement)
+              table       (-> state :tables (get table-name))
+              ; Delete each row matching the predicate
+              rows'
+              (loopr [rows'         (:rows table)
+                      update-count  0]
+                     [row (:rows table)]
+                     (if (or (nil? where) (ast/eval where row))
+                       (recur (disj rows' row)
+                              (inc update-count))
+                       (recur rows' update-count))
+                     ; We know a subset of the DB, so it would be bad if we
+                     ; deleted more rows than the DB did.
+                     (cond (< (:next.jdbc/update-count (first results))
+                              update-count)
+                           {:type :not-enough-updated-rows
+                            :statement (ast/sql statement)
+                            :expected  [:at-least update-count]
+                            :actual    (first results)
+                            :rows      (sorted-rows state table-name
+                                                    (:rows table))}
+                           ; All set
+                           true
+                           rows'))
+              ; And expand the negative predicate to cover anything we deleted.
+              neg' (if where
+                     (ast/->Or [where (:neg table)])
+                     ; Deleted everything
+                     (ast/literal true))
+              table' (assoc table :rows rows' :neg neg')]
+          ; Return errors if they happened
+          (cond
+            (map? rows')
+            (reduced rows')
+
+            true
+            (assoc-in state [:tables table-name] table')))))
 
     ; When we have a select, we evaluate the predicate against our state and
     ; ensure that all the rows we think should be present are present.
@@ -217,26 +281,40 @@
         ; Error
         state
         ; Success
-        (let [table   (:name (:table statement))
-              results (into (multiset/multiset) results)
+        (let [table-name  (:name (:table statement))
+              table       (-> state :tables (get table-name))
+              results     (into (multiset/multiset) results)
               ; What rows should be present?
-              required (->> (get-in state [:tables table :rows])
+              required (->> (:rows table)
                             (filter
                               (if-let [w (:where statement)]
-                                (partial eval-expr w)
+                                (partial ast/eval w)
                                 ; With no WHERE clause, you match everything
                                 (constantly true)))
                             (into (multiset/multiset)))
-              missing (multiset/minus required results)]
-          (if (seq missing)
-            (reduced {:type       :missing-rows
-                      :statement  (ast/sql statement)
-                      :missing    (sorted-rows state table missing)
-                      :expected   (sorted-rows state table required)
-                      :actual     (sorted-rows state table results)})
+              missing (multiset/minus required results)
+              ; Is there anything that should *not* be present?
+              neg        (:neg table)
+              unexpected (->> results
+                              (filter (partial ast/eval neg))
+                              (into (multiset/multiset)))]
+          (cond (seq missing)
+                (reduced {:type       :missing-rows
+                          :statement  (ast/sql statement)
+                          :missing    (sorted-rows state table-name missing)
+                          :expected   (sorted-rows state table-name required)
+                          :actual     (sorted-rows state table-name results)})
 
-            ; Success; we know these rows are present in the table
-            (update-in state [:tables table :rows] multiset/union results))))))
+                (seq unexpected)
+                (reduced {:type       :unexpected-rows
+                          :statement  (ast/sql statement)
+                          :negatory   (ast/sql neg)
+                          :unexpected (sorted-rows state table-name unexpected)})
+
+                ; Success; we know these rows are present in the table
+                true
+                (update-in state [:tables table-name :rows]
+                           multiset/union results))))))
 
 (defn check-txn
   "Takes an initial State and a transaction, represented as a series of SQL AST

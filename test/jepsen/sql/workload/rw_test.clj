@@ -8,7 +8,7 @@
             [clojure.tools.logging :refer [info warn]]
             [jepsen.sql.base-test :refer :all]))
 
-(deftest rw-test-read-uncommitted
+(deftest ^:slow rw-test-read-uncommitted
   (let [test' (run-workload! {:workload  :rw
                               :isolation :read-uncommitted
                               :expected-consistency-model :serializable})
@@ -17,7 +17,7 @@
     (is (set/superset? (set (:anomaly-types res))
                        #{:internal}))))
 
-(deftest rw-test-serializable
+(deftest ^:slow rw-test-serializable
   (let [test' (run-workload! {:workload  :rw
                               :isolation :serializable
                               ;:encodings [:integer]

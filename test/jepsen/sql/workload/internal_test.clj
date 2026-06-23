@@ -9,7 +9,7 @@
             [jepsen.sql.base-test :refer :all]))
 
 
-(deftest internal-test
+(deftest ^:slow internal-test
   (let [test' (run-workload! {:workload :internal
                               :isolation :read-uncommitted})
         res (:internal (:results test'))]
@@ -21,7 +21,7 @@
     (is (pos? (:error-count res)))
     (is (pos? (:txn-count res)))))
 
-(deftest internal-test-serializable
+(deftest ^:slow internal-test-serializable
   (let [test' (run-workload! {:workload :internal
                               :isolation :serializable})
         res (:internal (:results test'))]

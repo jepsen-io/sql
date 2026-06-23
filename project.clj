@@ -10,7 +10,8 @@
                  [org.clojure/test.check "1.1.3"]]
   :repl-options {:init-ns io.jepsen.sql}
   :profiles {:dev {:dependencies [[org.postgresql/postgresql "42.7.11"]]}}
-  :test-selectors {:default (fn [m] (not (or (:perf m))))
+  :test-selectors {:default (fn [m] (not (or (:perf m)
+                                             (:slow m))))
                    :all         (fn [m] true)
                    :focus       :focus})
 

@@ -154,13 +154,13 @@
    :key-types          (vec sql/key-types)
    :upsert-types       (vec sql/upsert-types)
    :linearizable-keys? true
-   ;:log-sql            true
+   :log-sql            true
    :logging
    ; We're going to run a bunch of our own tests here and the log noise is
    ; incredible. Uncomment these for details.
    {:overrides
-    #_nil
-    {"jepsen.core" :warn
+    nil
+    #_{"jepsen.core" :warn
        "jepsen.db" :warn
        "jepsen.print" :warn
        "jepsen.store" :warn
@@ -182,5 +182,5 @@
                      :name      (name workload-name)
                      :generator (->> (:generator workload)
                                      (gen/clients)
-                                     (gen/limit 1024))})]
+                                     (gen/limit (:limit opts 1024)))})]
     (jepsen/run! test)))

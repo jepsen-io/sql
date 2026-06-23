@@ -10,7 +10,7 @@
             [clojure.test.check [generators :as g]]
             [clojure.tools.logging :refer [info warn]]
             [jepsen [random :as rand]]
-            [jepsen.sql [ast :refer :all]]
+            [jepsen.sql [ast :as ast]]
             [dom-top.core :refer [loopr]])
   (:import (jepsen.sql.ast Case
                            ColumnName
@@ -125,7 +125,7 @@
   (->> (g/hash-map :name (g/return name)
                    :type (g/elements all-types-vec)
                    :primary-key? g/boolean)
-       (g/fmap map->Column)))
+       (g/fmap ast/map->Column)))
 
 (defn remove-duplicate-primary-keys
   "Takes a vector of columns and limits them to just one primary key."
@@ -165,8 +165,8 @@
                    (let [cols (if duplicate-pks?
                                 cols
                                 (remove-duplicate-primary-keys cols))]
-                     (map->Table {:name name
-                                  :cols cols})))))))
+                     (ast/map->Table {:name name
+                                      :cols cols})))))))
 
 (defn gen-schema
   "Generator for a Schema. Options are:
@@ -185,7 +185,7 @@
                               (mapv (partial gen-table opts))
                               (apply g/tuple))
                  :vpool (g/return vpool))))
-       (g/fmap map->Schema)))
+       (g/fmap ast/map->Schema)))
 
 ;; Literals
 
@@ -196,7 +196,7 @@
     (g/one-of (mapv (partial gen-lit* opts schema) type))
     (->> (case type
            :int (gen-long Integer/MIN_VALUE Integer/MAX_VALUE))
-         (g/fmap ->Literal))))
+         (g/fmap ast/literal))))
 
 (defn gen-lit
   "Generates a Literal of the givne type, sometimes picking dense values from
@@ -214,7 +214,7 @@
                   (filter (if (keyword? type)
                             (comp #{type} :type)
                             (comp type :type)))
-                  (mapv column-name))]
+                  (mapv ast/column-name))]
     (when (seq cols)
       (g/elements cols))))
 
@@ -251,7 +251,7 @@
   [expr-gen]
   (flet [left  expr-gen
          right expr-gen]
-        (Equals. left right)))
+        (ast/equals left right)))
 
 (defn gen-expr-boolean
   "Generates a boolean expression of the given depth."
@@ -278,16 +278,16 @@
           vals  (->> cols
                      (mapv (comp (partial gen-lit opts schema) :type))
                      (apply g/tuple))]
-    (insert table
-            (mapv column-name cols)
-            vals)))
+    (ast/insert table
+                (mapv ast/column-name cols)
+                vals)))
 
 (defn gen-update-pair
   "A generator which produces a [col-name value-expr] pair for an UPDATE"
   [opts schema table]
   (g/let [col (g/elements (:cols table))
           value (gen-lit opts schema (:type col))]
-    [(ColumnName. (:name col)) value]))
+    [(ast/column-name col) value]))
 
 (defn gen-update
   "Generator of Updates."
@@ -299,14 +299,14 @@
                                        (gen-update-pair opts schema table)
                                        {:min-elements 1, :max-elements n}))
           where (gen-where opts schema table)]
-    (Update. (TableName. (:name table)) set where)))
+    (ast/update table set where)))
 
 (defn gen-delete
   "Generator of Deletes."
   [opts schema]
   (g/let [table (g/elements (:tables schema))
           where (gen-where opts schema table)]
-    (delete table where)))
+    (ast/delete table where)))
 
 (defn gen-select
   "Generator of select statements"
@@ -314,7 +314,7 @@
   (->> (g/elements (:tables schema))
        (bind (fn [table]
                (flet [where (gen-where opts schema table)]
-                 (Select. (TableName. (:name table)) where))))))
+                 (ast/select table where))))))
 
 (defn gen-statement
   "Generator of statements."
