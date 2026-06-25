@@ -73,6 +73,30 @@
 (def cats-schema
   (ast/schema [cats-table]))
 
+(deftest ^:focus select-select-test
+  (let [schema  cats-schema
+        state   (initial-state cats-schema)
+        ; Read all cats with cuteness 2
+        state   (check-statement
+                  (ast/select "cats" (ast/equals
+                                       (ast/column-name "cuteness")
+                                       (ast/literal 2)))
+                  state
+                  [{:name "professor meowington" :cuteness 2}])
+        ; This actually tells us that there are *no other* cats with cuteness
+        ; 2! On a repeat select, we should be able to notice that.
+        state    (check-statement
+                   (ast/select "cats" nil)
+                   state
+                   [{:name "professor meowington", :cuteness 2}
+                    {:name "sunflake", :cuteness 2}])]
+    (is (= {:type :unexpected-rows
+            :statement ["SELECT * FROM cats"]
+            :negatory ["(((cuteness = ?) AND (NOT (((name = ?) AND (cuteness = ?))))) OR ?)"
+                       2 "professor meowington" 2 false]
+            :unexpected [{:name "sunflake", :cuteness 2}]}
+           @state))))
+
 (deftest ^:focus delete-select-test
   (let [schema  cats-schema
         state   (initial-state cats-schema)

@@ -311,10 +311,25 @@
                           :negatory   (ast/sql neg)
                           :unexpected (sorted-rows state table-name unexpected)})
 
-                ; Success; we know these rows are present in the table
+                ; OK, this is valid.
                 true
-                (update-in state [:tables table-name :rows]
-                           multiset/union results))))))
+                (let [; We know these specific rows now exist
+                      rows' (multiset/union (:rows table) results)
+                      ; And we *also* know that there cannot be any other rows
+                      ; which match the select predicate and are *not* one of
+                      ; these rows.
+                      neg' (ast/->Or
+                             [(ast/->And
+                               [; Matches predicate
+                                (or (:where statement)
+                                    (ast/literal true))
+                                ; And not one of the rows
+                                (ast/->Not
+                                  (ast/->Or
+                                    (mapv ast/row->pred results)))])
+                             (:neg table)])]
+                (assoc-in state [:tables table-name]
+                         (assoc table :rows rows' :neg neg'))))))))
 
 (defn check-txn
   "Takes an initial State and a transaction, represented as a series of SQL AST
