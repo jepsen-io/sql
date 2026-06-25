@@ -73,7 +73,7 @@
 (def cats-schema
   (ast/schema [cats-table]))
 
-(deftest ^:focus select-select-test
+(deftest select-select-test
   (let [schema  cats-schema
         state   (initial-state cats-schema)
         ; Read all cats with cuteness 2
@@ -97,7 +97,7 @@
             :unexpected [{:name "sunflake", :cuteness 2}]}
            @state))))
 
-(deftest ^:focus delete-select-test
+(deftest delete-select-test
   (let [schema  cats-schema
         state   (initial-state cats-schema)
         ; Delete every cat with cuteness 2
@@ -118,7 +118,7 @@
             :unexpected [{:name "professor meowington", :cuteness 2}]}
            @state))))
 
-(deftest ^:focus delete-insert-select-test
+(deftest delete-insert-select-test
   (let [schema  cats-schema
         state   (initial-state cats-schema)
         ; Delete every cat with cuteness 2
@@ -147,7 +147,7 @@
             :unexpected [{:name "professor meowington", :cuteness 2}]}
            @state))))
 
-(deftest ^:focus delete-update-select-test
+(deftest delete-update-select-test
   (let [schema  cats-schema
         state   (initial-state cats-schema)
         ; Delete every cat with cuteness 2
@@ -182,8 +182,41 @@
             :unexpected [{:name "professor meowington", :cuteness 2}]}
            @state))))
 
+; This will need us to be able to compare predicates
+#_(deftest delete-update-test
+    (let [schema  cats-schema
+          state   (initial-state cats-schema)
+          ; Delete every cat named peaches
+          state   (check-statement
+                    (ast/delete "cats" (ast/equals
+                                         (ast/column-name "name")
+                                         (ast/literal "peaches")))
+                    state
+                    [{:next.jdbc/update-count 2}])
+          ; Now let's update a cat named peaches to have cuteness 2
+          state (check-statement
+                  (ast/update "cats"
+                              [[(ast/column-name "cuteness")
+                                (ast/literal 2)]]
+                              (ast/->And
+                                [(ast/equals
+                                   (ast/column-name "cuteness")
+                                   (ast/literal 1))
+                                 (ast/equals
+                                   (ast/column-name "name")
+                                   (ast/literal "scamper"))]))
+                  state
+                  [{:next.jdbc/update-count 1}])]
+      ; The fact that the update touched a row implies it intersected with
+      ; the negative predicate!
+      (is (= {:type :unexpected-update
+              :statement ["UPDATE cats SET cuteness = ? WHERE cuteness = ? AND name = ?"
+                          2 1 "scamper"]
+              :result [{:next.jdbc/update-count 1}]
+              :negatory [:TODO]}
+             @state))))
 
-(deftest ^:slow ^:focus internal-sim-test
+(deftest ^:slow internal-sim-test
   (rand/with-seed 13
     (let [test' (run-workload! {:log-sql   true
                                 :workload  :internal-sim
