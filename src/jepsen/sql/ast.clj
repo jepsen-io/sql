@@ -85,6 +85,7 @@
 (defn literal
   "Constructs a Literal."
   [x]
+  (assert (not (satisfies? SQL x)))
   (Literal. x))
 
 ; Represents a column used as a part of a table.
