@@ -10,7 +10,8 @@
             [jepsen [random :as rand]]
             [jepsen.sql [ast :as ast]
                         [base-test :refer :all]]
-            [jepsen.sql.workload.internal-sim :refer :all]))
+            [jepsen.sql.workload.internal-sim :refer :all])
+  (:import (jepsen.sql.workload.internal_sim State)))
 
 (defn valid-row
   "Does a row look all right?"
@@ -181,6 +182,36 @@
                        2 "scamper" 2 false]
             :unexpected [{:name "professor meowington", :cuteness 2}]}
            @state))))
+
+(deftest update-where-deep-ast-test
+  ; This verifies that our update negative hole poker understands the columns
+  ; involved in a deeply nested AST.
+  (let [table (ast/table "t"
+                         [(ast/column "a" ast/boolean-type)
+                          (ast/column "b" ast/text-type)])
+        schema (ast/schema [table])
+        state  (initial-state schema)
+        ; Read one row
+        state (check-statement
+                (ast/select "t" (ast/literal true))
+                state
+                [{:a true, :b "mew"}])
+        ; Update that row
+        state (check-statement
+                (ast/update "t"
+                            [[(ast/column-name "a") (ast/literal false)]
+                             [(ast/column-name "b") (ast/literal "mew")]]
+                            (ast/->not (ast/->not (ast/column-name "a"))))
+                state
+                [{:next.jdbc/update-count 1}])
+        ; Then read it again
+        state (check-statement
+                (ast/select "t" nil)
+                state
+                [{:a false :b "mew"}])]
+    ; This is fine!
+    (is (instance? State state))))
+
 
 ; This will need us to be able to compare predicates
 #_(deftest delete-update-test

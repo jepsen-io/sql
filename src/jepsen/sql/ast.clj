@@ -430,8 +430,8 @@
     (walk/prewalk
       (fn search [x]
         (when (instance? ColumnName x)
-          (vswap! cols conj! x)
-          x))
+          (vswap! cols conj! x))
+        x)
       expr)
     (persistent! @cols)))
 
