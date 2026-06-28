@@ -139,8 +139,8 @@
                                          (:cols statement))))
             rows'     (conj (:rows table) row)
             ; An insert also "pokes a hole" in our negative predicate.
-            neg' (ast/->And
-                   [(ast/->Not (ast/row->pred row))
+            neg' (ast/->and
+                   [(ast/->not (ast/row->pred row))
                     (:neg table)])]
         (assoc-in state [:tables table-name]
                   (assoc table :rows rows' :neg neg')))))
@@ -217,7 +217,7 @@
                               ; Ha! We can further restrict it.
                               true
                               (conj set-preds where))
-              neg' (ast/->And [(ast/->Not (ast/->And set-preds))
+              neg' (ast/->and [(ast/->not (ast/->and set-preds))
                                (:neg table)])]
           (cond ; Error!
                 (reduced? rows')
@@ -261,7 +261,7 @@
                            rows'))
               ; And expand the negative predicate to cover anything we deleted.
               neg' (if where
-                     (ast/->Or [where (:neg table)])
+                     (ast/->or [where (:neg table)])
                      ; Deleted everything
                      (ast/literal true))
               table' (assoc table :rows rows' :neg neg')]
@@ -318,14 +318,14 @@
                       ; And we *also* know that there cannot be any other rows
                       ; which match the select predicate and are *not* one of
                       ; these rows.
-                      neg' (ast/->Or
-                             [(ast/->And
+                      neg' (ast/->or
+                             [(ast/->and
                                [; Matches predicate
                                 (or (:where statement)
                                     (ast/literal true))
                                 ; And not one of the rows
-                                (ast/->Not
-                                  (ast/->Or
+                                (ast/->not
+                                  (ast/->or
                                     (mapv ast/row->pred results)))])
                              (:neg table)])]
                 (assoc-in state [:tables table-name]

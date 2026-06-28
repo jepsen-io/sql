@@ -241,8 +241,18 @@
   (eval-without-row? [_]
     (eval-without-row? expr))
 
+  ; Remember, in SQL, NOT NULL is NULL!
   (eval [_ row]
-    (not (eval expr row))))
+    (let [x (eval expr row)]
+      (if (nil? x)
+        nil
+        (not x)))))
+
+(defn ->not
+  "Constructs a Not expression."
+  [expr]
+  (assert (satisfies? SQL expr))
+  (Not. expr))
 
 ; Represents (A AND B AND ...)
 (defrecord And [exprs]
@@ -256,16 +266,25 @@
   (eval-without-row? [_]
     (every? eval-without-row? exprs))
 
+  ; Note that we're specifically representing SQL three-valued logic here
   (eval [_ row]
     (loop [exprs exprs]
       (if (seq exprs)
         (let [x (eval (first exprs) row)]
-          (assert (boolean? x))
-          (if x
-            (recur (next exprs))
-            false))
+          (cond (nil? x)    nil
+                (false? x)  false
+                true        (recur (next exprs))))
         ; No more expressions to check
         true))))
+
+(defn ->and
+  "Constructs an And expression."
+  [exprs]
+  (assert (every? (partial satisfies? SQL) exprs))
+  (condp = (count exprs)
+    0 (literal false)
+    1 (first exprs)
+    (And. exprs)))
 
 ; Represents (A OR B OR ...)
 (defrecord Or [exprs]
@@ -277,15 +296,25 @@
   (eval-without-row? [_]
     (every? eval-without-row? exprs))
 
+  ; Note that we're specifically representing SQL three-valued logic here
   (eval [_ row]
-    (loop [exprs exprs]
+    (loop [exprs      exprs
+           found-nil? false]
       (if (seq exprs)
         (let [x (eval (first exprs) row)]
-          (assert (boolean? x))
-          (if x
-            true
-            (recur (next exprs))))
-        false))))
+          (cond (nil? x)   (recur (next exprs) true)
+                (false? x) (recur (next exprs) found-nil?)
+                true       true))
+        found-nil?))))
+
+(defn ->or
+  "Constructs an Or expression."
+  [exprs]
+  (assert (every? (partial satisfies? SQL) exprs))
+  (condp = (count exprs)
+    0 (literal true)
+    1 (first exprs)
+    (Or. exprs)))
 
 (defn row->pred
   "Turns a row map into a predicate which matches that row, or any row with

@@ -230,9 +230,9 @@
   "Generates an AND, OR, or NOT expression, given a generator of
   sub-expressions."
   [expr-gen]
-  (g/one-of [(g/fmap ast/->Not expr-gen)
-             (g/fmap ast/->Or  (g/vector expr-gen 2 4))
-             (g/fmap ast/->And (g/vector expr-gen 2 4))]))
+  (g/one-of [(g/fmap ast/->not expr-gen)
+             (g/fmap ast/->or  (g/vector expr-gen 2 4))
+             (g/fmap ast/->and (g/vector expr-gen 2 4))]))
 
 (declare gen-expr-leaf
          gen-expr-same-type)

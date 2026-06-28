@@ -92,7 +92,7 @@
                     {:name "sunflake", :cuteness 2}])]
     (is (= {:type :unexpected-rows
             :statement ["SELECT * FROM cats"]
-            :negatory ["(((cuteness = ?) AND (NOT (((name = ?) AND (cuteness = ?))))) OR ?)"
+            :negatory ["(((cuteness = ?) AND (NOT ((name = ?) AND (cuteness = ?)))) OR ?)"
                        2 "professor meowington" 2 false]
             :unexpected [{:name "sunflake", :cuteness 2}]}
            @state))))
@@ -231,12 +231,13 @@
                :missing-rows
                :not-enough-updated-rows}
              (set (map :type errs))))
-      (pprint errs)
+      ;(pprint errs)
       (mapv valid-error errs))))
 
 
-(deftest ^:slow internal-sim-test-serializable
+(deftest ^:slow ^:focus internal-sim-test-serializable
   (let [test' (run-workload! {:workload :internal-sim
-                              :isolation :serializable})
+                              :isolation :serializable
+                              :logging {}})
         res (:internal (:results test'))]
     (is (true? (:valid? res)))))
