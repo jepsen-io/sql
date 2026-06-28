@@ -279,9 +279,11 @@
 (defn schema
   "Constructs a schema from a vector of tables, and optionally a vpool."
   ([tables]
+   (schema tables {}))
+  ([tables vpool]
    (assert (vector? tables))
    (assert (every? (partial instance? Table) tables))
-   (Schema. tables {})))
+   (Schema. tables vpool)))
 
 (defrecord Insert [table cols values]
   SQL

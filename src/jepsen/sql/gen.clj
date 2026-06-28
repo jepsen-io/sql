@@ -94,6 +94,66 @@
        vec
        g/elements))
 
+;; Literals
+
+(defn gen-string-lit
+  "Generates a string literal. We're just doing simple strings for now. With no
+  args, generates variable width strings. With an integer size, generates
+  strings of up to that length."
+  ([]
+   ; For now let's restrict ourselves to polite strings that are unlikely to
+   ; mess with escaping.
+   (string-from-regex #"[A-Za-z0-9\- _]+"))
+  ([n]
+   (string-from-regex
+     (re-pattern (str "[A-Za-z0-9\\- _]{0," n "}")))))
+
+(defprotocol GenLitOfType
+  (gen-lit-of-type [type opts schema]
+                   "Returns a generator for the given Type.")
+
+  (vpool-key [type]
+              "What key do we use in the vpool when generating values of this
+              type?"))
+
+(extend-protocol GenLitOfType
+  BooleanType
+  (gen-lit-of-type [_ opts schema]
+    (g/elements [true false nil]))
+
+  (vpool-key [_] nil)
+
+  IntegerType
+  (gen-lit-of-type [_ opts schema]
+    (gen-long Integer/MIN_VALUE Integer/MAX_VALUE))
+
+  (vpool-key [_] :longs)
+
+  TextType
+  (gen-lit-of-type [_ opts schema]
+    (gen-string-lit))
+
+  (vpool-key [_] :strings))
+
+
+(defn gen-lit*
+  "Generates a Literal of the given type."
+  [opts schema type]
+  (g/fmap ast/literal
+          (gen-lit-of-type type opts schema)))
+
+(defn gen-lit
+  "Generates a Literal of the given type, sometimes picking dense values from
+  the schema's vpool."
+  [opts schema type]
+  (let [lit* (gen-lit* opts schema type)]
+    (if-let [vpool-key (vpool-key type)]
+      (let [vpool (get (:vpool schema) vpool-key)]
+        (assert (seq vpool) (str "No elements in vpool for " vpool-key))
+        (g/one-of [(g/fmap ast/literal (g/elements vpool))
+                   lit*]))
+      lit*)))
+
 ; Columns, Tables, Schemas
 
 (defn gen-column
@@ -145,16 +205,40 @@
                      (ast/map->Table {:name name
                                       :cols cols})))))))
 
+(defn gen-vpool
+  "Generator for a value pool: a map of keywords (like :longs or :doubles) to a
+  vector of values. We use this to generate the same values over and over again
+  in different contexts. Options:
+
+      :max-vpool-count  How many elements can the value pool contain for a
+                        given type?"
+  [opts]
+  (let [opts {:min-elements 1
+              :max-elements (:max-vpool-count opts 3)}]
+    (g/hash-map
+      ; We pick small generators here so that they're likely to work across
+      ; domains
+      :longs   (g/vector-distinct (gen-long Short/MIN_VALUE Short/MAX_VALUE)
+                                  opts)
+      :doubles (g/vector-distinct (g/double* {:infinite? false
+                                              :NaN? false})
+                                  opts)
+      ; We make these very short so they're more likely to work across various
+      ; character(n) sizes
+      :strings (g/vector-distinct (gen-string-lit 3) opts))))
+
 (defn gen-schema
   "Generator for a Schema. Options are:
 
       :max-table-count  The maximum number of tables
-      :max-column-count The maximum number of columns"
+      :max-column-count The maximum number of columns
+      :max-vpool-count  How many elements can the value pool contain for a
+                        given type?"
   [opts]
   (->> (g/tuple
          (g/choose 1 (:max-table-count opts (count table-names)))
          (g/shuffle table-names)
-         (g/return {}))
+         (gen-vpool opts))
        (bind (fn [[table-count table-names vpool]]
                (g/hash-map
                  :tables (->> table-names
@@ -163,39 +247,6 @@
                               (apply g/tuple))
                  :vpool (g/return vpool))))
        (g/fmap ast/map->Schema)))
-
-;; Literals
-
-(defprotocol GenLitOfType
-  (gen-lit-of-type [type opts schema]
-                   "Returns a generator for the given Type."))
-
-(extend-protocol GenLitOfType
-  BooleanType
-  (gen-lit-of-type [_ opts schema]
-    (g/elements [true false nil]))
-
-  IntegerType
-  (gen-lit-of-type [_ opts schema]
-    (gen-long Integer/MIN_VALUE Integer/MAX_VALUE))
-
-  TextType
-  (gen-lit-of-type [_ opts schema]
-    ; For now let's restrict ourselves to polite strings that are unlikely to
-    ; mess with escaping.
-    (string-from-regex #"[A-Za-z0-9\- _]+")))
-
-(defn gen-lit*
-  "Generates a Literal of the given type."
-  [opts schema type]
-  (g/fmap ast/literal
-          (gen-lit-of-type type opts schema)))
-
-(defn gen-lit
-  "Generates a Literal of the given type, sometimes picking dense values from
-  the schema's vpool."
-  [opts schema type]
-  (gen-lit* opts schema type))
 
 ;; Expressions
 
