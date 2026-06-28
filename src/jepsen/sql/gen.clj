@@ -9,15 +9,19 @@
             [clojure.test.check :as tc]
             [clojure.test.check [generators :as g]]
             [clojure.tools.logging :refer [info warn]]
+            [com.gfredericks.test.chuck.generators :refer [string-from-regex]]
             [jepsen [random :as rand]]
             [jepsen.sql [ast :as ast]]
             [dom-top.core :refer [loopr]])
-  (:import (jepsen.sql.ast Case
+  (:import (jepsen.sql.ast BooleanType
+                           Case
                            ColumnName
                            Equals
+                           IntegerType
                            Literal
                            Select
                            Schema
+                           TextType
                            TableName
                            Update)))
 
@@ -72,36 +76,14 @@
   "All table names, as a vector."
   ["t" "u" "v"])
 
-(def all-types-vec
-  "All possible types, in shrinking order"
-  [:int])
-
-(def all-types
-  "All possible types, as a set."
-  (set all-types-vec))
-
-(def num-types
-  "All numeric types, as a set."
-  #{:smallint :int :bigint :real :double})
-
-(def text-types
-  "All textual types, as a set."
-  #{:character3 :character-varying3 :text})
-
-(defn general-type
-  "Takes a type and returns either a set of compatible types, or the type
-  itself. We use this to generate (e.g.) assignments from float to int."
-  [type]
-  (case type
-    :smallint           num-types
-    :int                num-types
-    :bigint             num-types
-    :real               num-types
-    :double             num-types
-    :character3         text-types
-    :character-varying3 text-types
-    :text               text-types
-    type))
+(defn gen-concrete-type
+  "A generator for a specific type, like INTEGER or CHARACTER(3). We use these
+  to build schemas."
+  [opts]
+  (g/one-of
+    [(g/return ast/integer-type)
+     (g/return ast/boolean-type)
+     (g/return ast/text-type)]))
 
 (defn gen-type
   "A generator for a type valid in the given table."
@@ -110,20 +92,15 @@
        (map :type)
        distinct
        vec
-       g/elements
-       ; Right now we're going to limit ourselves to generating *exactly*
-       ; the available types, because I don't trust myself to robustly
-       ; implement all the details of float/decimal/integer coercion.
-       ;(g/fmap general-type)
-       ))
+       g/elements))
 
 ; Columns, Tables, Schemas
 
 (defn gen-column
   "Generates a Column with the given name."
-  [name]
+  [opts name]
   (->> (g/hash-map :name (g/return name)
-                   :type (g/elements all-types-vec)
+                   :type (gen-concrete-type opts)
                    :primary-key? g/boolean)
        (g/fmap ast/map->Column)))
 
@@ -157,7 +134,7 @@
                  (g/tuple
                    (->> col-names
                         (take col-count)
-                        (mapv gen-column)
+                        (mapv (partial gen-column opts))
                         (apply g/tuple))
                    (g/return duplicate-pks?))))
          ; Filter columns and produce a schema
@@ -189,18 +166,33 @@
 
 ;; Literals
 
+(defprotocol GenLitOfType
+  (gen-lit-of-type [type opts schema]
+                   "Returns a generator for the given Type."))
+
+(extend-protocol GenLitOfType
+  BooleanType
+  (gen-lit-of-type [_ opts schema]
+    (g/elements [true false nil]))
+
+  IntegerType
+  (gen-lit-of-type [_ opts schema]
+    (gen-long Integer/MIN_VALUE Integer/MAX_VALUE))
+
+  TextType
+  (gen-lit-of-type [_ opts schema]
+    ; For now let's restrict ourselves to polite strings that are unlikely to
+    ; mess with escaping.
+    (string-from-regex #"[A-Za-z0-9\- _]+")))
+
 (defn gen-lit*
   "Generates a Literal of the given type."
   [opts schema type]
-  (if (set? type)
-    (g/one-of (mapv (partial gen-lit* opts schema) type))
-    (->> (case type
-           :boolean (g/elements [true false nil])
-           :int (gen-long Integer/MIN_VALUE Integer/MAX_VALUE))
-         (g/fmap ast/literal))))
+  (g/fmap ast/literal
+          (gen-lit-of-type type opts schema)))
 
 (defn gen-lit
-  "Generates a Literal of the givne type, sometimes picking dense values from
+  "Generates a Literal of the given type, sometimes picking dense values from
   the schema's vpool."
   [opts schema type]
   (gen-lit* opts schema type))
@@ -212,9 +204,9 @@
   rather than a generator if there are no columns of this type."
   [opts schema table type]
   (let [cols (->> (:cols table)
-                  (filter (if (keyword? type)
-                            (comp #{type} :type)
-                            (comp type :type)))
+                  ; TODO: type compatibility, so VARCHAR(3) and TEXT end up
+                  ; used together.
+                  (filter (comp #{type} :type))
                   (mapv ast/column-name))]
     (when (seq cols)
       (g/elements cols))))
@@ -243,8 +235,8 @@
    (gen-expr-boolean opts schema table 3))
   ([opts schema table depth]
    (if (< depth 1)
-     (gen-expr-leaf opts schema table :boolean)
-     (g/one-of [(gen-expr-leaf opts schema table :boolean)
+     (gen-expr-leaf opts schema table ast/boolean-type)
+     (g/one-of [(gen-expr-leaf opts schema table ast/boolean-type)
                 (gen-equals
                   (gen-expr-same-type opts schema table (dec depth)))
                 (gen-expr-boolean-logic
@@ -265,7 +257,7 @@
   means only bare literals."
   ([opts schema table type depth]
    (condp = type
-     :boolean (gen-expr-boolean opts schema table depth)
+     ast/boolean-type (gen-expr-boolean opts schema table depth)
      ; For any other type, we only generate leaves
      (gen-expr-leaf opts schema table type))))
 

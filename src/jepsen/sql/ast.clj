@@ -13,6 +13,12 @@
             [jepsen [random :as rand]]
             [dom-top.core :refer [loopr]]))
 
+;; Protocols
+
+(defprotocol Type
+  (super [this]
+         "Returns the Type which is the supertype of this one."))
+
 (defprotocol Eval
   (eval-without-row? [this]
                      "Can this be evaluated without a row?")
@@ -59,13 +65,91 @@
   "Splices n SQL strings or vectors together, optionally joining them with the
   given separator."
   ([sqls]
-   (reduce splice sqls))
+   (case (count sqls)
+     0 [""]
+     1 (first sqls)
+     (reduce splice "" sqls)))
   ([separator sqls]
-   (reduce (fn [acc sql]
-             (-> acc
-                 (splice separator)
-                 (splice sql)))
-           sqls)))
+   (case (count sqls)
+     0 [""]
+     1 (first sqls)
+     (reduce (fn [acc sql]
+               (-> acc
+                   (splice separator)
+                   (splice sql)))
+             sqls))))
+
+;; Types
+
+; In general, we represent each SQL type using a different type of record; this
+; way we can parameterize types like CHARACTER VARYING(3).
+
+(defrecord NumericType []
+  Type
+  (super [_]))
+
+(def numeric-type
+  "The singleton NumericType."
+  (NumericType.))
+
+(defrecord ExactNumericType []
+  Type
+  (super [_] numeric-type))
+
+(def exact-numeric-type
+  "The singleton ExactNumericType."
+  (ExactNumericType.))
+
+(defrecord IntegerType []
+  Type
+  (super [_] exact-numeric-type)
+
+  SQL
+  (sql [_] ["INTEGER"]))
+
+(def integer-type
+  "The singleton IntegerType."
+  (IntegerType.))
+
+(defrecord StringType []
+  Type
+  (super [_]))
+
+(def string-type
+  "The singleton StringType."
+  (StringType.))
+
+(defrecord CharacterStringType []
+  Type
+  (super [_] string-type))
+
+(def character-string-type
+  "The singleton CharacterStringType."
+  (CharacterStringType.))
+
+(defrecord TextType []
+  Type
+  (super [_] character-string-type)
+
+  SQL
+  (sql [_] ["TEXT"]))
+
+(def text-type
+  "The singleton TextType."
+  (TextType.))
+
+(defrecord BooleanType []
+  Type
+  (super [_])
+
+  SQL
+  (sql [_] ["BOOLEAN"]))
+
+(def boolean-type
+  "The singleton BooleanType."
+  (BooleanType.))
+
+;; General Expressions
 
 ; A general-purpose box for any SQL vector
 (defrecord Statement [sql]
@@ -95,18 +179,18 @@
    primary-key?]
   SQL
   (sql [_]
-    [(str name " "
-          (case type
-            (c/name type))
-          (when primary-key? " PRIMARY KEY"))]))
+    (splice name " " (sql type)
+            (when primary-key? " PRIMARY KEY"))))
 
 (defn column
   "Takes a name, type, and a map of options; constructs a Column."
   ([name type]
    (assert (string? name))
+   (assert (satisfies? Type type))
    (Column. name type false))
   ([name type opts]
    (assert (string? name))
+   (assert (satisfies? Type type))
    (map->Column (assoc opts :name name :type type))))
 
 ; Represents a column name like `age`. We use these to represent columns in

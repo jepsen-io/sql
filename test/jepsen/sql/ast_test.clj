@@ -19,6 +19,18 @@
                         :cols :vals)])
            2))))
 
+(deftest column-sql-test
+  (is (= ["b INTEGER PRIMARY KEY"]
+         (sql (column "b" integer-type {:primary-key? true})))))
+
+(deftest table-setup-test
+  (is (= [["CREATE TABLE foo (a TEXT, b INTEGER, c BOOLEAN)"]]
+         (->> (table "foo" [(column "a" text-type)
+                              (column "b" integer-type)
+                              (column "c" boolean-type)])
+              setup
+              (mapv sql)))))
+
 (deftest equals-test
   (is (false? (eval (->Equals (->Literal 1) (->Literal 2)) {:x 1 :y 2})))
   (is (true?  (eval (->Equals (->Literal 2) (->Literal 2)) {:x 1 :y 2})))

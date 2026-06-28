@@ -64,8 +64,8 @@
 
 (def cats-table
   (ast/table "cats"
-             [(ast/column "name" :text)
-              (ast/column "cuteness" :int)]))
+             [(ast/column "name"     ast/text-type)
+              (ast/column "cuteness" ast/integer-type)]))
 
 (def cats-col-names
   (mapv ast/column-name (:cols cats-table)))
