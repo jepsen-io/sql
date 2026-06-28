@@ -234,8 +234,7 @@
       ;(pprint errs)
       (mapv valid-error errs))))
 
-
-(deftest ^:slow ^:focus internal-sim-test-serializable
+(deftest ^:slow internal-sim-test-serializable
   (let [test' (run-workload! {:workload :internal-sim
                               :isolation :serializable
                               :logging {}})

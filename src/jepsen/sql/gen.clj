@@ -211,12 +211,18 @@
     (when (seq cols)
       (g/elements cols))))
 
+(declare gen-expr
+         gen-expr-leaf)
+
 (defn gen-equals
-  "Generates an Equals expression, given a generator of sub-expressions."
-  [expr-gen]
-  (flet [left  expr-gen
-         right expr-gen]
-        (ast/equals left right)))
+  "Generates an Equals expression up to the given depth."
+  [opts schema table depth]
+  (g/bind (gen-type opts schema table)
+          (fn [type]
+            (let [g (gen-expr opts schema table type (dec depth))]
+              (flet [left  g
+                     right g]
+                    (ast/equals left right))))))
 
 (defn gen-expr-boolean-logic
   "Generates an AND, OR, or NOT expression, given a generator of
@@ -226,9 +232,6 @@
              (g/fmap ast/->or  (g/vector expr-gen 2 4))
              (g/fmap ast/->and (g/vector expr-gen 2 4))]))
 
-(declare gen-expr-leaf
-         gen-expr-same-type)
-
 (defn gen-expr-boolean
   "Generates a boolean expression up to the given depth."
   ([opts schema table]
@@ -237,8 +240,7 @@
    (if (< depth 1)
      (gen-expr-leaf opts schema table ast/boolean-type)
      (g/one-of [(gen-expr-leaf opts schema table ast/boolean-type)
-                (gen-equals
-                  (gen-expr-same-type opts schema table (dec depth)))
+                (gen-equals opts schema table (dec depth))
                 (gen-expr-boolean-logic
                   (gen-expr-boolean opts schema table (dec depth)))]))))
 
@@ -260,15 +262,6 @@
      ast/boolean-type (gen-expr-boolean opts schema table depth)
      ; For any other type, we only generate leaves
      (gen-expr-leaf opts schema table type))))
-
-(defn gen-expr-same-type
-  "A generator which picks a type in the table and constructs expressions which
-  are all of that type, up to the given recursion depth."
-  [opts schema table depth]
-  (g/bind (gen-type opts schema table)
-          (fn [type]
-            (gen-expr opts schema table type depth))))
-
 
 ;; Statements
 
