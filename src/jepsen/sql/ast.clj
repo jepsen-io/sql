@@ -306,7 +306,11 @@
          (eval-without-row? right)))
 
   (eval [_ row]
-    (= (eval left row) (eval right row))))
+    (let [l (eval left row)]
+      (when-not (nil? l)
+        (let [r (eval right row)]
+          (when-not (nil? r)
+            (= l r)))))))
 
 (defn equals
   "Constructs an Equals expression."
@@ -350,16 +354,21 @@
   (eval-without-row? [_]
     (every? eval-without-row? exprs))
 
-  ; Note that we're specifically representing SQL three-valued logic here
+  ; Note that we're specifically representing SQL three-valued logic here.
+  ; Weirdly, `NULL AND NULL AND NULL AND FALSE` is false--we can't
+  ; short-circuit NULL.
   (eval [_ row]
-    (loop [exprs exprs]
+    (loop [have-nil?  false
+           exprs      exprs]
       (if (seq exprs)
         (let [x (eval (first exprs) row)]
-          (cond (nil? x)    nil
-                (false? x)  false
-                true        (recur (next exprs))))
+          (cond (false? x)  false
+                (nil? x)    (recur true (next exprs))
+                true        (recur have-nil? (next exprs))))
         ; No more expressions to check
-        true))))
+        (if have-nil?
+          nil
+          true)))))
 
 (defn ->and
   "Constructs an And expression."
@@ -380,16 +389,20 @@
   (eval-without-row? [_]
     (every? eval-without-row? exprs))
 
-  ; Note that we're specifically representing SQL three-valued logic here
+  ; Note that we're specifically representing SQL three-valued logic here.
+  ; FALSE OR FALSE OR NULL returns NULL, not FALSE, so we can't short-circuit
+  ; NULL.
   (eval [_ row]
-    (loop [exprs      exprs
-           found-nil? false]
+    (loop [have-nil? false
+           exprs      exprs]
       (if (seq exprs)
         (let [x (eval (first exprs) row)]
-          (cond (nil? x)   (recur (next exprs) true)
-                (false? x) (recur (next exprs) found-nil?)
-                true       true))
-        found-nil?))))
+          (cond (true? x) true
+                (nil? x)  (recur true (next exprs))
+                true      (recur have-nil? (next exprs))))
+        (if have-nil?
+          nil
+          false)))))
 
 (defn ->or
   "Constructs an Or expression."

@@ -32,15 +32,19 @@
               (mapv sql)))))
 
 (deftest equals-test
-  (is (false? (eval (->Equals (->Literal 1) (->Literal 2)) {:x 1 :y 2})))
-  (is (true?  (eval (->Equals (->Literal 2) (->Literal 2)) {:x 1 :y 2})))
-  (is (false? (eval (->Equals (->Literal 1) (column-name "y")) {:x 1 :y 2})))
-  (is (true?  (eval (->Equals (->Literal 1) (column-name "x")) {:x 1 :y 2})))
-  )
+  (is (false? (eval (equals (->Literal 1) (->Literal 2)) {:x 1 :y 2})))
+  (is (true?  (eval (equals (->Literal 2) (->Literal 2)) {:x 1 :y 2})))
+  (is (false? (eval (equals (->Literal 1) (column-name "y")) {:x 1 :y 2})))
+  (is (true?  (eval (equals (->Literal 1) (column-name "x")) {:x 1 :y 2})))
+  (testing "null"
+    (is (nil? (eval (equals (->Literal nil) (->Literal nil)) nil)))
+    (is (nil? (eval (equals (->Literal 1) (->Literal nil))   nil)))
+    (is (nil? (eval (equals (->Literal nil) (->Literal 1))   nil)))))
 
 (deftest not-test
   (is (false? (eval (->Not (->Literal true)) nil)))
-  (is (true?  (eval (->Not (->Literal false)) nil))))
+  (is (true?  (eval (->Not (->Literal false)) nil)))
+  (is (nil?   (eval (->Not (->Literal nil)) nil))))
 
 (deftest and-test
   (is (false? (eval (->And [(->Literal true)
@@ -50,7 +54,12 @@
   (is (true? (eval (->And [(->Literal true)
                            (column-name "x")
                            (column-name "y")])
-                   {:x true :y true}))))
+                   {:x true :y true})))
+  (testing "null"
+    (is (nil? (eval (->and [(literal true) (literal nil)]) nil)))
+    (is (nil? (eval (->and [(literal nil) (literal true)]) nil)))
+    (is (false? (eval (->and [(literal false) (literal nil)]) nil)))
+    (is (false? (eval (->and [(literal nil) (literal false)]) nil)))))
 
 (deftest or-test
   (is (false? (eval (->Or [(->Literal false)
@@ -60,4 +69,9 @@
   (is (true? (eval (->Or [(->Literal false)
                            (column-name "x")
                            (column-name "y")])
-                   {:x true :y false}))))
+                   {:x true :y false})))
+  (testing "null"
+    (is (true?   (eval (->or [(literal true)  (literal nil)])   nil)))
+    (is (true?   (eval (->or [(literal nil)   (literal true)])  nil)))
+    (is (nil?    (eval (->or [(literal false) (literal nil)])   nil)))
+    (is (nil?    (eval (->or [(literal nil)   (literal false)]) nil)))))

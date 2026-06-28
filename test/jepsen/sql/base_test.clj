@@ -137,6 +137,9 @@
         #"relation .+ does not exist"
         {:type :relation-does-not-exist, :definite? true}
 
+        #"violates not-null constraint"
+        {:type :not-null-constraint}
+
         nil)
       nil)))
 
