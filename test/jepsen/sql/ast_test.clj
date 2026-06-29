@@ -1,7 +1,11 @@
 (ns jepsen.sql.ast-test
-  (:refer-clojure :exclude [eval])
-  (:require [clojure [test :refer :all]]
-            [jepsen.sql.ast :refer :all]))
+  (:refer-clojure :exclude [eval update])
+  (:require [clojure [pprint :refer [pprint]]
+                     [test :refer :all]]
+            [clojure.test.check.generators :as g]
+            [com.gfredericks.test.chuck.clojure-test :refer [checking]]
+            [jepsen.sql [ast :refer :all]
+                        [gen :as gen]]))
 
 (deftest unique-tables-test
   (is (= (->Case
@@ -75,3 +79,20 @@
     (is (true?   (eval (->or [(literal nil)   (literal true)])  nil)))
     (is (nil?    (eval (->or [(literal false) (literal nil)])   nil)))
     (is (nil?    (eval (->or [(literal nil)   (literal false)]) nil)))))
+
+(deftest simplify-test
+  (checking "booleans simplify equivalently" 1000
+            [schema (gen/gen-schema {})
+             table  (g/elements (:tables schema))
+             expr   (gen/gen-expr-boolean {} schema table 6)
+             row    (gen/gen-row {} schema table)]
+            (let [simple (simplify expr)]
+              #_(when (and (not= simple expr)
+                         #_(not= (eval expr row)
+                               (eval simple row)))
+                (prn)
+                (prn :row row)
+                (prn (sql expr) '-> (eval expr row))
+                (prn (sql simple) '-> (eval simple row)))
+              (is (= (eval expr row)
+                     (eval simple row))))))

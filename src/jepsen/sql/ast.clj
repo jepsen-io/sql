@@ -526,3 +526,138 @@
   "Rewrites all tables in a case to have a unique suffix, like t_1"
   [case i]
   (rewrite-tables case #(str % "_" i)))
+
+;; Expression simplification
+
+; This is not fantastic, but it significantly cuts down the complexity of the
+; predicates we have to look at when debugging internal-sim examples.
+(defn fixed-point
+  "Iterates f on x until unchanged."
+  [f x]
+  (loop [x x]
+    (let [x' (f x)]
+      (if (= x x')
+        x
+        (recur x')))))
+
+(defprotocol Simplify
+  (simplify-2 [expr]))
+
+(extend-protocol Simplify
+  Not
+  (simplify-2 [expr]
+    (let [e (:expr expr)]
+      (if (instance? Not e)
+        ; Double negation
+        (:expr e)
+        expr)))
+
+  And
+  (simplify-2 [expr]
+    (let [exprs (:exprs expr)]
+      (case (count exprs)
+        ; Degenerate cases
+        0 (literal true)
+        1 (first exprs)
+
+        (loopr [exprs  []
+                seen   #{}
+                a-nil? false]
+               [e (:exprs expr)]
+               (if (seen e)
+                 ; We've already seen this
+                 (recur exprs seen a-nil?)
+                 ; New expression
+                 (let [seen (conj seen e)]
+                   (cond (instance? Literal e)
+                         (case (:x e)
+                           ; AND TRUE is superfluous
+                           true (recur exprs seen a-nil?)
+                           ; AND FALSE is always false
+                           false (literal false)
+                           ; AND NULL... we have to wait and see if we get a
+                           ; false.
+                           nil (recur exprs seen true)
+                           (recur (conj exprs e) seen a-nil?))
+
+                         ; Lift nested ANDs
+                         (instance? And e)
+                         (recur (into exprs (:exprs e)) seen a-nil?)
+
+                         ; Otherwise...
+                         true
+                         (recur (conj exprs e) seen a-nil?))))
+               ; If we encountered a null but made it here, it's actually a bit
+               ; weird. We don't know if we'll evaluate to NULL or FALSE until
+               ; we actually eval in the context of the row, so we *can't*
+               ; condense further.
+               (if a-nil?
+                 (->and (conj exprs (literal nil)))
+                 (->and exprs))))))
+
+  Or
+  (simplify-2 [expr]
+    (let [exprs (:exprs expr)]
+      (case (count exprs)
+        ; Degenerate cases
+        0 (literal true)
+        1 (first exprs)
+
+        (loopr [exprs  []
+                seen   #{}
+                a-nil? false]
+               [e (:exprs expr)]
+               (if (seen e)
+                 ; We've already seen this
+                 (recur exprs seen a-nil?)
+                 ; New expression
+                 (let [seen (conj seen e)]
+                   (cond (instance? Literal e)
+                         (case (:x e)
+                           ; OR FALSE is superfluous
+                           false (recur exprs seen a-nil?)
+                           ; OR TRUE is always true
+                           true (literal true)
+                           ; OR NULL... we have to wait and see if we get a
+                           ; true.
+                           nil (recur exprs seen true)
+                           (recur (conj exprs e) seen a-nil?))
+
+                         ; Lift nested ORs
+                         (instance? Or e)
+                         (recur (into exprs (:exprs e)) seen a-nil?)
+
+                         ; Otherwise
+                         true
+                         (recur (conj exprs e) seen a-nil?))))
+               ; If we encountered a null but made it here, it's actually a bit
+               ; weird. We don't know if we'll evaluate to NULL or FALSE until
+               ; we actually eval in the context of the row, so we *can't*
+               ; condense further.
+               (if a-nil?
+                 (->or (conj exprs (literal nil)))
+                 (->or exprs)))))))
+
+(defn simplify-1
+  "A single simplification pass."
+  [expr]
+  (if (satisfies? Simplify expr)
+    (simplify-2 expr)
+    expr))
+
+(defn simplify-static
+  "Walks an expression tree, replacing anything that can be statically
+  evaluated."
+  [expr]
+  (walk/postwalk (fn [expr]
+                   (if (and (satisfies? Eval expr)
+                            (eval-without-row? expr))
+                     (literal (eval expr nil))
+                     expr))
+                 expr))
+
+(defn simplify
+  "Takes an expression like (And [(Or [...]) (Not (Equals ...))]) and returns
+  an equivalent, simpler version of it."
+  [expr]
+  (fixed-point simplify-1 (simplify-static expr)))

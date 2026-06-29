@@ -93,8 +93,8 @@
                     {:name "sunflake", :cuteness 2}])]
     (is (= {:type :unexpected-rows
             :statement ["SELECT * FROM cats"]
-            :negatory ["(((cuteness = ?) AND (NOT ((name = ?) AND (cuteness = ?)))) OR ?)"
-                       2 "professor meowington" 2 false]
+            :negatory ["((cuteness = ?) AND (NOT ((name = ?) AND (cuteness = ?))))"
+                       2 "professor meowington" 2]
             :unexpected [{:name "sunflake", :cuteness 2}]}
            @state))))
 
@@ -115,7 +115,7 @@
                    [{:name "professor meowington", :cuteness 2}])]
     (is (= {:type :unexpected-rows
             :statement ["SELECT * FROM cats"]
-            :negatory ["((cuteness = ?) OR ?)" 2 false]
+            :negatory ["(cuteness = ?)" 2]
             :unexpected [{:name "professor meowington", :cuteness 2}]}
            @state))))
 
@@ -143,8 +143,8 @@
                     {:name "scamper", :cuteness 2}])]
     (is (= {:type :unexpected-rows
             :statement ["SELECT * FROM cats"]
-            :negatory ["((NOT ((name = ?) AND (cuteness = ?))) AND ((cuteness = ?) OR ?))"
-                       "scamper" 2 2 false]
+            :negatory ["((NOT ((name = ?) AND (cuteness = ?))) AND (cuteness = ?))"
+                       "scamper" 2 2]
             :unexpected [{:name "professor meowington", :cuteness 2}]}
            @state))))
 
@@ -178,8 +178,8 @@
                     {:name "scamper", :cuteness 2}])]
     (is (= {:type :unexpected-rows
             :statement ["SELECT * FROM cats"]
-            :negatory ["((NOT ((cuteness = ?) AND (name = ?))) AND ((cuteness = ?) OR ?))"
-                       2 "scamper" 2 false]
+            :negatory ["((NOT ((cuteness = ?) AND (name = ?))) AND (cuteness = ?))"
+                       2 "scamper" 2]
             :unexpected [{:name "professor meowington", :cuteness 2}]}
            @state))))
 
@@ -247,12 +247,14 @@
               :negatory [:TODO]}
              @state))))
 
-(deftest ^:slow internal-sim-test
+(deftest ^:slow ^:focus internal-sim-test
   (rand/with-seed 13
     (let [test' (run-workload! {:log-sql   true
                                 :workload  :internal-sim
                                 :isolation :read-uncommitted
-                                :limit     8192})
+                                :limit     8192
+                                ;:logging   {}
+                                })
           res (:internal (:results test'))
           errs (:errors res)]
       (is (false? (:valid? res)))
@@ -265,9 +267,11 @@
       ;(pprint errs)
       (mapv valid-error errs))))
 
-(deftest ^:slow internal-sim-test-serializable
-  (let [test' (run-workload! {:workload :internal-sim
+(deftest ^:slow ^:focus internal-sim-test-serializable
+  (let [test' (run-workload! {:workload  :internal-sim
                               :isolation :serializable
-                              :logging {}})
+                              :limit     4096
+                              ;:logging   {}
+                              })
         res (:internal (:results test'))]
     (is (true? (:valid? res)))))

@@ -141,7 +141,8 @@
             ; An insert also "pokes a hole" in our negative predicate.
             neg' (ast/->and
                    [(ast/->not (ast/row->pred row))
-                    (:neg table)])]
+                    (:neg table)])
+            neg' (ast/simplify neg')]
         (assoc-in state [:tables table-name]
                   (assoc table :rows rows' :neg neg')))))
 
@@ -218,7 +219,8 @@
                               true
                               (conj set-preds where))
               neg' (ast/->and [(ast/->not (ast/->and set-preds))
-                               (:neg table)])]
+                               (:neg table)])
+              neg' (ast/simplify neg')]
           (cond ; Error!
                 (reduced? rows')
                 rows'
@@ -261,7 +263,7 @@
                            rows'))
               ; And expand the negative predicate to cover anything we deleted.
               neg' (if where
-                     (ast/->or [where (:neg table)])
+                     (ast/simplify (ast/->or [where (:neg table)]))
                      ; Deleted everything
                      (ast/literal true))
               table' (assoc table :rows rows' :neg neg')]
@@ -327,7 +329,8 @@
                                 (ast/->not
                                   (ast/->or
                                     (mapv ast/row->pred results)))])
-                             (:neg table)])]
+                             (:neg table)])
+                      neg' (ast/simplify neg')]
                 (assoc-in state [:tables table-name]
                          (assoc table :rows rows' :neg neg'))))))))
 

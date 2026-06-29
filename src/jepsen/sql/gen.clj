@@ -323,6 +323,15 @@
     [[1 (g/return nil)]
      [3 (gen-expr-boolean opts schema table)]]))
 
+(defn gen-row
+  "Generator of row maps (e.g. {:foo 2}) for a Table."
+  [opts schema table]
+  (flet [vals (->> (:cols table)
+                   (mapv (comp (partial gen-lit opts schema) :type))
+                   (apply g/tuple))]
+        (zipmap (map (comp keyword :name) (:cols table))
+                (map :x vals))))
+
 (defn gen-insert
   "Generator of Inserts"
   [opts schema]
