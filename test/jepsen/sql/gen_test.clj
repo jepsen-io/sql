@@ -45,7 +45,6 @@
       ; You're meant to replace this when the generators change; the idea is to
       ; look through the history by hand and make sure it seems reasonable;
       ; you're getting a nice blend of statements and predicates, etc.
-      ;(mapv (comp prn sql) (:statements case))
       (is (= [
 ["SELECT * FROM v"]
 ["SELECT * FROM v"]
@@ -255,7 +254,10 @@
 ["UPDATE u SET d = ? WHERE (d <= d)" 1231]
 
               ]
-             (mapv sql (:statements case)))))))
+             (mapv sql (:statements case)))))
+
+      ;(mapv (comp prn sql) (:statements case))
+      ))
 
 (defn samples
   "Takes 10 deterministic samples from a generator of SQL expressions. Returns

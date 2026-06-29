@@ -97,15 +97,19 @@
               (is (= (ast/eval expr row)
                      (ast/eval simple row))))))
 
-; Bring this back if I ever take another shot at collators
-#_(deftest compare+-test
-  (let [strings ["" " " "_" " a" "_a" "_ a" " _a"]]
+(deftest compare+-test
+  (let [strings ["" " " " a" "a"]]
     ; Just for playing around at psql
-    (do (println "DROP TABLE IF EXISTS t;")
+    #_(do (println "DROP TABLE IF EXISTS t;")
         (println "CREATE TABLE t (s text collate unicode);")
         (println (str "INSERT INTO t VALUES "
                       (str/join ", " (map (fn [s] (str "('" s "')")) strings))
                       ";"))
         (println "SELECT CONCAT('\"', s, '\"') FROM t ORDER BY s ASC;"))
-    (is (= ["" " " " _a" " a" "_" "_ a" "_a"]
+    (is (= [
+            ""
+            " "
+            " a"
+            "a"
+            ]
            (sort ast/compare+ strings)))))

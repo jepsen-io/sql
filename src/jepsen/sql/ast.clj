@@ -330,8 +330,10 @@
   Postgres wants to sort spaces before underscores, but convincing a collator
   to do that seems impossible."
   (let [c (Collator/getInstance java.util.Locale/ROOT)
-        rules (str (.getRules c)
-                   " & ' ' < '_'")]
+        ; you do NOT want to know
+        rules (str/replace (.getRules c)
+                           #"<'\u005f'"
+                           "<' '<'\u005f'")]
     (doto (RuleBasedCollator. rules)
       (.setStrength 3))))
 
