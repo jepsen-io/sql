@@ -102,11 +102,11 @@
   strings of up to that length."
   ([]
    ; For now let's restrict ourselves to polite strings that are unlikely to
-   ; mess with escaping.
-   (string-from-regex #"[A-Za-z0-9\- _]+"))
+   ; mess with escaping, and which our collator can reliably sort.
+   (string-from-regex #"[A-Za-z0-9 ]+"))
   ([n]
    (string-from-regex
-     (re-pattern (str "[A-Za-z0-9\\- _]{0," n "}")))))
+     (re-pattern (str "[A-Za-z0-9 ]{0," n "}")))))
 
 (defprotocol GenLitOfType
   (gen-lit-of-type [type opts schema]
@@ -275,6 +275,17 @@
                      right g]
                     (ast/equals left right))))))
 
+(defn gen-compare
+  "Generates a Compare expression up to the given depth."
+  [opts schema table depth]
+  (g/bind (gen-type opts schema table)
+          (fn [type]
+            (let [g (gen-expr opts schema table type (dec depth))]
+              (flet [op    (g/elements ast/compare-ops)
+                     left  g
+                     right g]
+                    (ast/compare op left right))))))
+
 (defn gen-expr-boolean-logic
   "Generates an AND, OR, or NOT expression, given a generator of
   sub-expressions."
@@ -291,7 +302,7 @@
    (if (< depth 1)
      (gen-expr-leaf opts schema table ast/boolean-type)
      (g/one-of [(gen-expr-leaf opts schema table ast/boolean-type)
-                (gen-equals opts schema table (dec depth))
+                (gen-compare opts schema table (dec depth))
                 (gen-expr-boolean-logic
                   (gen-expr-boolean opts schema table (dec depth)))]))))
 

@@ -1,84 +1,84 @@
 (ns jepsen.sql.ast-test
-  (:refer-clojure :exclude [eval update])
   (:require [clojure [pprint :refer [pprint]]
+                     [string :as str]
                      [test :refer :all]]
             [clojure.test.check.generators :as g]
             [com.gfredericks.test.chuck.clojure-test :refer [checking]]
-            [jepsen.sql [ast :refer :all]
+            [jepsen.sql [ast :as ast]
                         [gen :as gen]]))
 
 (deftest unique-tables-test
-  (is (= (->Case
-           (->Schema
-             [(->Table "meow_2" [])]
+  (is (= (ast/->Case
+           (ast/->Schema
+             [(ast/->Table "meow_2" [])]
              {})
-           [(->Insert (->TableName "meow_2")
-                      :cols :vals)])
-         (unique-tables
-           (->Case
-             (->Schema
-               [(->Table "meow" [])]
+           [(ast/->Insert (ast/->TableName "meow_2")
+                          :cols :vals)])
+         (ast/unique-tables
+           (ast/->Case
+             (ast/->Schema
+               [(ast/->Table "meow" [])]
                {})
-             [(->Insert (->TableName "meow")
-                        :cols :vals)])
+             [(ast/->Insert (ast/->TableName "meow")
+                            :cols :vals)])
            2))))
 
 (deftest column-sql-test
   (is (= ["b INTEGER PRIMARY KEY"]
-         (sql (column "b" integer-type {:primary-key? true})))))
+         (ast/sql (ast/column "b" ast/integer-type {:primary-key? true})))))
 
 (deftest table-setup-test
-  (is (= [["CREATE TABLE foo (a TEXT, b INTEGER, c BOOLEAN)"]]
-         (->> (table "foo" [(column "a" text-type)
-                              (column "b" integer-type)
-                              (column "c" boolean-type)])
-              setup
-              (mapv sql)))))
+  (is (= [["CREATE TABLE foo (a TEXT collate unicode, b INTEGER, c BOOLEAN)"]]
+         (->> (ast/table "foo" [(ast/column "a" ast/text-type)
+                                (ast/column "b" ast/integer-type)
+                                (ast/column "c" ast/boolean-type)])
+              ast/setup
+              (mapv ast/sql)))))
 
 (deftest equals-test
-  (is (false? (eval (equals (->Literal 1) (->Literal 2)) {:x 1 :y 2})))
-  (is (true?  (eval (equals (->Literal 2) (->Literal 2)) {:x 1 :y 2})))
-  (is (false? (eval (equals (->Literal 1) (column-name "y")) {:x 1 :y 2})))
-  (is (true?  (eval (equals (->Literal 1) (column-name "x")) {:x 1 :y 2})))
+  (is (false? (ast/eval (ast/equals (ast/literal 1) (ast/literal 2)) {:x 1 :y 2})))
+  (is (true?  (ast/eval (ast/equals (ast/literal 2) (ast/literal 2)) {:x 1 :y 2})))
+  (is (false? (ast/eval (ast/equals (ast/literal 1) (ast/column-name "y")) {:x 1 :y 2})))
+  (is (true?  (ast/eval (ast/equals (ast/literal 1) (ast/column-name "x")) {:x 1 :y 2})))
   (testing "null"
-    (is (nil? (eval (equals (->Literal nil) (->Literal nil)) nil)))
-    (is (nil? (eval (equals (->Literal 1) (->Literal nil))   nil)))
-    (is (nil? (eval (equals (->Literal nil) (->Literal 1))   nil)))))
+    (is (nil? (ast/eval (ast/equals (ast/literal nil) (ast/literal nil)) nil)))
+    (is (nil? (ast/eval (ast/equals (ast/literal 1)   (ast/literal nil))   nil)))
+    (is (nil? (ast/eval (ast/equals (ast/literal nil) (ast/literal 1))   nil)))))
 
 (deftest not-test
-  (is (false? (eval (->Not (->Literal true)) nil)))
-  (is (true?  (eval (->Not (->Literal false)) nil)))
-  (is (nil?   (eval (->Not (->Literal nil)) nil))))
+  (is (false? (ast/eval (ast/->Not (ast/literal true)) nil)))
+  (is (true?  (ast/eval (ast/->Not (ast/literal false)) nil)))
+  (is (nil?   (ast/eval (ast/->Not (ast/literal nil)) nil))))
 
 (deftest and-test
-  (is (false? (eval (->And [(->Literal true)
-                            (column-name "x")
-                            (column-name "y")])
-                    {:x false :y true})))
-  (is (true? (eval (->And [(->Literal true)
-                           (column-name "x")
-                           (column-name "y")])
-                   {:x true :y true})))
+  (is (false? (ast/eval (ast/->And [(ast/literal true)
+                                    (ast/column-name "x")
+                                    (ast/column-name "y")])
+                        {:x false :y true})))
+  (is (true? (ast/eval (ast/->And [(ast/literal true)
+                                   (ast/column-name "x")
+                                   (ast/column-name "y")])
+                       {:x true :y true})))
   (testing "null"
-    (is (nil? (eval (->and [(literal true) (literal nil)]) nil)))
-    (is (nil? (eval (->and [(literal nil) (literal true)]) nil)))
-    (is (false? (eval (->and [(literal false) (literal nil)]) nil)))
-    (is (false? (eval (->and [(literal nil) (literal false)]) nil)))))
+    (is (nil? (ast/eval (ast/->and [(ast/literal true) (ast/literal nil)]) nil)))
+    (is (nil? (ast/eval (ast/->and [(ast/literal nil) (ast/literal true)]) nil)))
+    (is (false? (ast/eval (ast/->and [(ast/literal false) (ast/literal nil)]) nil)))
+    (is (false? (ast/eval (ast/->and [(ast/literal nil) (ast/literal false)]) nil)))))
 
 (deftest or-test
-  (is (false? (eval (->Or [(->Literal false)
-                            (column-name "x")
-                            (column-name "y")])
-                    {:x false :y false})))
-  (is (true? (eval (->Or [(->Literal false)
-                           (column-name "x")
-                           (column-name "y")])
-                   {:x true :y false})))
+  (is (false? (ast/eval (ast/->or [(ast/literal false)
+                                   (ast/column-name "x")
+                                   (ast/column-name "y")])
+                        {:x false :y false})))
+  (is (true? (ast/eval (ast/->or [(ast/literal false)
+                                  (ast/column-name "x")
+                                  (ast/column-name "y")])
+                       {:x true :y false})))
   (testing "null"
-    (is (true?   (eval (->or [(literal true)  (literal nil)])   nil)))
-    (is (true?   (eval (->or [(literal nil)   (literal true)])  nil)))
-    (is (nil?    (eval (->or [(literal false) (literal nil)])   nil)))
-    (is (nil?    (eval (->or [(literal nil)   (literal false)]) nil)))))
+    (is (true?   (ast/eval (ast/->or [(ast/literal true)  (ast/literal nil)])   nil)))
+    (is (true?   (ast/eval (ast/->or [(ast/literal nil)   (ast/literal true)])  nil)))
+    (is (nil?    (ast/eval (ast/->or [(ast/literal false) (ast/literal nil)])   nil)))
+    (is (nil?    (ast/eval (ast/->or [(ast/literal nil)   (ast/literal false)]) nil)))))
 
 (deftest simplify-test
   (checking "booleans simplify equivalently" 1000
@@ -86,13 +86,26 @@
              table  (g/elements (:tables schema))
              expr   (gen/gen-expr-boolean {} schema table 6)
              row    (gen/gen-row {} schema table)]
-            (let [simple (simplify expr)]
+            (let [simple (ast/simplify expr)]
               #_(when (and (not= simple expr)
-                         #_(not= (eval expr row)
-                               (eval simple row)))
-                (prn)
-                (prn :row row)
-                (prn (sql expr) '-> (eval expr row))
-                (prn (sql simple) '-> (eval simple row)))
-              (is (= (eval expr row)
-                     (eval simple row))))))
+                           #_(not= (eval expr row)
+                                   (eval simple row)))
+                  (prn)
+                  (prn :row row)
+                  (prn (ast/sql expr) '-> (ast/eval expr row))
+                  (prn (ast/sql simple) '-> (ast/eval simple row)))
+              (is (= (ast/eval expr row)
+                     (ast/eval simple row))))))
+
+; Bring this back if I ever take another shot at collators
+#_(deftest compare+-test
+  (let [strings ["" " " "_" " a" "_a" "_ a" " _a"]]
+    ; Just for playing around at psql
+    (do (println "DROP TABLE IF EXISTS t;")
+        (println "CREATE TABLE t (s text collate unicode);")
+        (println (str "INSERT INTO t VALUES "
+                      (str/join ", " (map (fn [s] (str "('" s "')")) strings))
+                      ";"))
+        (println "SELECT CONCAT('\"', s, '\"') FROM t ORDER BY s ASC;"))
+    (is (= ["" " " " _a" " a" "_" "_ a" "_a"]
+           (sort ast/compare+ strings)))))

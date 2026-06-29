@@ -134,11 +134,17 @@
         #"duplicate key value"
         {:type :duplicate-key-value, :definite? true}
 
+        #"multiple primary keys for table .+ are not allowed"
+        {:type :multiple-primary-keys, :definite? true}
+
         #"relation .+ does not exist"
         {:type :relation-does-not-exist, :definite? true}
 
+        #"table .+? does not exist"
+        {:type :table-does-not-exist, :definite? true}
+
         #"violates not-null constraint"
-        {:type :not-null-constraint}
+        {:type :not-null-constraint, :definite? true}
 
         nil)
       nil)))

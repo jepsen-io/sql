@@ -5,10 +5,18 @@
                      [set :as set]
                      [string :as str]
                      [test :refer :all]]
+            [clojure.test.check :refer [quick-check]]
+            [clojure.test.check [properties :as prop]
+                                [results :as tc.results]]
             [clojure.tools.logging :refer [info warn]]
             [multiset.core :as multiset :refer [multiset multiset?]]
-            [jepsen [random :as rand]]
+            [jepsen [core :as jepsen]
+                    [generator :as gen]
+                    [random :as rand]
+                    [tests :refer [noop-test]]]
             [jepsen.sql [ast :as ast]
+                        [client :as client]
+                        [gen :as sql.gen]
                         [base-test :refer :all]]
             [jepsen.sql.workload.internal-sim :refer :all])
   (:import (jepsen.sql.workload.internal_sim State)))
@@ -247,7 +255,7 @@
               :negatory [:TODO]}
              @state))))
 
-(deftest ^:slow ^:focus internal-sim-test
+(deftest ^:slow internal-sim-test
   (rand/with-seed 13
     (let [test' (run-workload! {:log-sql   true
                                 :workload  :internal-sim
@@ -267,11 +275,74 @@
       ;(pprint errs)
       (mapv valid-error errs))))
 
-(deftest ^:slow ^:focus internal-sim-test-serializable
-  (let [test' (run-workload! {:workload  :internal-sim
-                              :isolation :serializable
-                              :limit     4096
-                              ;:logging   {}
-                              })
-        res (:internal (:results test'))]
-    (is (true? (:valid? res)))))
+(deftest ^:slow internal-sim-test-serializable
+  (rand/with-seed 13
+    (let [test' (run-workload! {:workload  :internal-sim
+                                :isolation :serializable
+                                :limit     4096
+                                :logging   {}
+                                })
+          res (:internal (:results test'))]
+      (is (true? (:valid? res))))))
+
+(defn run-case!
+  "Runs a case against the given DB connection. Returns true if everything
+  checks out; otherwise false."
+  [test conn case]
+  (try
+    (let [; Set up schema
+          _ (mapv (partial statement! test conn) (ast/teardown case))
+          _ (mapv (partial statement! test conn) (ast/setup case))
+          state (reduce (fn [state sql]
+                          (let [results (statement! test conn sql)]
+                            (check-statement sql state results)))
+                        (initial-state (:schema case))
+                        (:statements case))]
+      (if (instance? State state)
+        true
+        (reify tc.results/Result
+          (pass? [_] false)
+          (result-data [_]
+            {:sql (mapv ast/sql
+                        (into (ast/setup case)
+                              (:statements case)))
+             :error state}))))
+    (catch Exception e
+      (warn e "run-case! threw")
+      (throw e))))
+
+(deftest ^:slow qc-test
+  ; We set up a whole Jepsen test to run a single "op" which consists of
+  ; quickchecking a bunch of cases against Postgres, our reference DB. They
+  ; should all pass if we've done our job right.
+  (let [res (promise)
+        client
+        (client/client
+          (reify client/Client
+            (open! [this test conn node] this)
+            (setup! [this test conn])
+            (invoke! [this test conn op]
+              (deliver res (quick-check 1024
+                                        (prop/for-all [case (sql.gen/gen-case {:max-statement-count 32})]
+                                                      (run-case! test conn case))
+                                        :seed 5675))
+              (assoc op :type :ok :value nil))
+            (teardown! [this test conn])
+            (close! [this test]))
+          {:jepsen.sql/open     open
+           :jepsen.sql/error-fn error-fn})
+        opts (merge base-opts
+                    {:concurrency 1
+                     ;:logging     nil
+                     })
+        test (merge noop-test
+                    opts
+                    {:db (db)
+                     :name "internal-sim qc"
+                     :generator   (gen/clients [{:f :qc}])
+                     :client      client})
+        test (jepsen/run! test)]
+    (when-let [err (:result-data (:shrunk @res))]
+      (mapv prn (:sql err))
+      (pprint (:error err)))
+    (is (:pass? @res))))

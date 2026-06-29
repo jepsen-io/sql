@@ -1,7 +1,8 @@
 (ns jepsen.sql.ast
   "An abstract syntax tree representation of basic SQL schemas and statements."
-  (:refer-clojure :exclude [eval update])
-  (:require [clojure [core :as c]
+  (:refer-clojure :exclude [eval update compare])
+  (:require [clj-commons.slingshot :refer [try+ throw+]]
+            [clojure [core :as c]
                      [math :refer [round]]
                      [pprint :refer [pprint]]
                      [set :as set]
@@ -11,7 +12,10 @@
             [clojure.test.check [generators :as g]]
             [clojure.tools.logging :refer [info warn]]
             [jepsen [random :as rand]]
-            [dom-top.core :refer [loopr]]))
+            [dom-top.core :refer [loopr]])
+  (:import (java.text Collator
+                      RuleBasedCollator)
+           (java.util Locale)))
 
 ;; Protocols
 
@@ -132,7 +136,7 @@
   (super [_] character-string-type)
 
   SQL
-  (sql [_] ["TEXT"]))
+  (sql [_] ["TEXT collate unicode"]))
 
 (def text-type
   "The singleton TextType."
@@ -320,6 +324,70 @@
   (assert (satisfies? SQL left))
   (assert (satisfies? SQL right))
   (Equals. left right))
+
+(def ^Collator collator
+  "Ugh I just cannot for the life of me figure out the JVM collator API.
+  Postgres wants to sort spaces before underscores, but convincing a collator
+  to do that seems impossible."
+  (let [c (Collator/getInstance java.util.Locale/ROOT)
+        rules (str (.getRules c)
+                   " & ' ' < '_'")]
+    (doto (RuleBasedCollator. rules)
+      (.setStrength 3))))
+
+(defn compare+
+  "Compares two objects the same way we expect an SQL database to do."
+  [a b]
+  (cond (string? a)
+        (.compare collator a b)
+
+        true
+        (c/compare a b)))
+
+; Represents a binary comparator like `x = 2` or `a > b`
+(defrecord Compare [op left right]
+  SQL
+  (sql [_]
+    (splice "(" (sql left) " " (name op) " " (sql right) ")"))
+
+  Eval
+  (eval-without-row? [_]
+    (and (eval-without-row? left)
+         (eval-without-row? right)))
+
+  (eval [expr row]
+    (try
+      (let [l (eval left row)]
+        (when-not (nil? l)
+          (let [r (eval right row)]
+            (when-not (nil? r)
+              (case op
+                :=  (= l r)
+                :<> (not= l r)
+                :<  (neg? (compare+ l r))
+                :<= (not (pos? (compare+ l r)))
+                :>  (pos? (compare+ l r))
+                :>= (not (neg? (compare+ l r))))))))
+      (catch Exception e
+        (throw+ {:type :eval-error
+                 :expr expr
+                 :row row
+                 :left  (eval left row)
+                 :right (eval right row)}
+                e)))))
+
+(def compare-ops
+  "Legal ops for Compare"
+  [:= :<> :< :<= :> :>=])
+
+(defn compare
+  "Constructs a Compare expression given a keyword (:=, :<>, :<=, ...) and two
+  expressions."
+  [op left right]
+  (assert (some #{op} compare-ops))
+  (assert (satisfies? SQL left))
+  (assert (satisfies? SQL right))
+  (Compare. op left right))
 
 ; Represents a (NOT A) expression
 (defrecord Not [expr]
