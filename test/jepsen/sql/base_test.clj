@@ -49,9 +49,9 @@
   (reify db/DB
     (setup! [_ test node]
       (install-pg! test node)
-      (c/su (cu/write-file! (slurp (io/resource "pg_hba.conf"))
+      (c/su (cu/write-file! (slurp (io/file "test-resources" "pg_hba.conf"))
                             "/etc/postgresql/18/main/pg_hba.conf")
-            (cu/write-file! (slurp (io/resource "jepsen.conf"))
+            (cu/write-file! (slurp (io/file "test-resources" "jepsen.conf"))
                             "/etc/postgresql/18/main/conf.d/99-jepsen.conf"))
 
         ; Create fresh data dir
