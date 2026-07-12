@@ -329,7 +329,7 @@
   "Ugh I just cannot for the life of me figure out the JVM collator API.
   Postgres wants to sort spaces before underscores, but convincing a collator
   to do that seems impossible."
-  (let [c (Collator/getInstance java.util.Locale/ROOT)
+  (let [c (Collator/getInstance java.util.Locale/US)
         ; you do NOT want to know
         rules (str/replace (.getRules c)
                            #"<'\u005f'"
@@ -366,10 +366,10 @@
               (case op
                 :=  (= l r)
                 :<> (not= l r)
-                :<  (neg? (compare+ l r))
-                :<= (not (pos? (compare+ l r)))
-                :>  (pos? (compare+ l r))
-                :>= (not (neg? (compare+ l r))))))))
+                :<  (<    (compare+ l r) 0)
+                :<= (<=   (compare+ l r) 0)
+                :>  (<  0 (compare+ l r))
+                :>= (<= 0 (compare+ l r)))))))
       (catch Exception e
         (throw+ {:type :eval-error
                  :expr expr

@@ -275,15 +275,15 @@
       ;(pprint errs)
       (mapv valid-error errs))))
 
-(deftest ^:slow ^:focus internal-sim-test-serializable
+(deftest ^:slow internal-sim-test-serializable
   (rand/with-seed 13
     (let [test' (run-workload! {:workload  :internal-sim
                                 :isolation :serializable
                                 :limit     4096
-                                :logging   {}
+                                ;:logging   {}
                                 })
           res (:internal (:results test'))]
-      (pprint res)
+      ;(pprint res)
       (is (true? (:valid? res))))))
 
 (defn run-case!

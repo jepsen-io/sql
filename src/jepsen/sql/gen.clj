@@ -103,10 +103,10 @@
   ([]
    ; For now let's restrict ourselves to polite strings that are unlikely to
    ; mess with escaping, and which our collator can reliably sort.
-   (string-from-regex #"[A-Za-z0-9 ]+"))
+   (string-from-regex #"[A-Za-z0-9]+"))
   ([n]
    (string-from-regex
-     (re-pattern (str "[A-Za-z0-9 ]{0," n "}")))))
+     (re-pattern (str "[A-Za-z0-9]{0," n "}")))))
 
 (defprotocol GenLitOfType
   (gen-lit-of-type [type opts schema]

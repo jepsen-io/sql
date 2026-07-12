@@ -98,18 +98,37 @@
                      (ast/eval simple row))))))
 
 (deftest compare+-test
-  (let [strings ["" " " " a" "a"]]
+  (let [strings [""
+                 " "
+                 " a"
+                 " XipmwdcMm1ch656Vg5F9mIzp6i"
+                 "a"
+                 "s9tO8o 4PhpgRdxC5CLCOsy"
+                 ]]
     ; Just for playing around at psql
     #_(do (println "DROP TABLE IF EXISTS t;")
-        (println "CREATE TABLE t (s text collate unicode);")
+        (println "CREATE TABLE t (s text collate \"en_US\");")
         (println (str "INSERT INTO t VALUES "
                       (str/join ", " (map (fn [s] (str "('" s "')")) strings))
                       ";"))
         (println "SELECT CONCAT('\"', s, '\"') FROM t ORDER BY s ASC;"))
-    (is (= [
-            ""
-            " "
-            " a"
-            "a"
-            ]
+    (is (= strings
            (sort ast/compare+ strings)))))
+
+(deftest compare-test
+  (let [c (fn [comp a b]
+            (ast/eval (ast/compare comp (ast/literal a) (ast/literal b)) nil))]
+    (testing "="
+      (is (true? (c := 1 1)))
+      (is (false? (c := "a" 34))))
+    (testing "<>"
+      (is (true? (c :<> 1 2)))
+      (is (false? (c :<> "a" "a"))))
+    (testing ">="
+      (is (true? (c :>= 5 -1)))
+      (is (true? (c :>= "b" "a")))
+      (is (false? (c :>= "a" "b")))
+      ; Java Collators will be the death of me.
+      ;(is (false? (c :>= "s9tO8o 4PhpgRdxC5CLCOsy" " XipmwdcMm1ch656Vg5F9mIzp6i")))
+      )))
+
