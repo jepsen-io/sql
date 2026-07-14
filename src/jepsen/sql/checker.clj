@@ -88,7 +88,7 @@
                          (set (range (count (:nodes test))))
                          history)]
       (if (set? cutoff)
-        {:valid? :false
+        {:valid? false
          :error  "Some nodes never executed an OK operation"
          :nodes  (map (:nodes test) (sort cutoff))}
         ; Second pass: look for column or table not found errors *after*
