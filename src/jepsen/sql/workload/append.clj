@@ -130,10 +130,14 @@
 
               ; We're in a txn, but have a savepoint; roll back
               savepoint?
-              (j/execute! conn ["ROLLBACK TO SAVEPOINT upsert"])
+              (do
+                (j/execute! conn ["ROLLBACK TO SAVEPOINT upsert"])
+                ; NB j/execute! will falsely signal append-insert! succeeded
+                ; if we propagate its truthy return value
+                nil)
 
               ; No savepoint; gotta explode.
-              true
+              :else
               (throw+ e))))))
 
 (defn append-update!
