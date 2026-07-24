@@ -423,7 +423,8 @@
 (defn new-case-delay
   "Returns a Delay which will generate a new Case for case number i."
   [i]
-  (-> (sql.gen/generate {:max-statement-count 4096
+  (-> (sql.gen/generate {:duplicate-primary-keys? false
+                         :max-statement-count 4096
                          :max-table-count 2
                          :max-column-count 4})
       (ast/unique-tables i)
