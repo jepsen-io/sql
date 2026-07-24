@@ -181,14 +181,18 @@
 (defn gen-table
   "Generates a Table. Options are:
 
-      :max-column-count The maximum number of columns"
+      :duplicate-primary-keys?  If true, we rarely emit tables with more than
+                                one primary key.
+      :max-column-count         The maximum number of columns"
   [opts name]
   ; We're doing a weird dance here to miminize the recurrent use of
   ; bind--this should hopefully shrink better.
   (let [mcc (:max-column-count opts 4)]
     (->> (g/tuple (g/choose 1 mcc)
                   (g/shuffle (vec (take mcc column-names)))
-                  (probability 1/100))
+                  (if (:duplicate-primary-keys opts true)
+                    (probability 1/100)
+                    (g/return false)))
          ; Generate columns
          (bind (fn [[col-count col-names duplicate-pks?]]
                  (g/tuple
@@ -400,6 +404,8 @@
 (defn gen-case
   "Generator for a Case. Options:
 
+      :duplicate-primary-keys?  Whether to generate tables with duplicate
+                                primary keys sometimes.
       :max-table-count      The maximum number of tables
       :max-column-count     The maximum number of columns
       :max-statement-count  The maximum number of statements"
@@ -412,6 +418,8 @@
 (defn generate
   "Generates a Case given options. Options are:
 
+      :duplicate-primary-keys?  Whether to generate tables with duplicate
+                                primary keys sometimes.
       :seed                 The random seed
       :size                 The size parameter for generation
       :max-table-count      The maximum number of tables
