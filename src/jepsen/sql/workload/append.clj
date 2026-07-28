@@ -134,7 +134,7 @@
                 (j/execute! conn ["ROLLBACK TO SAVEPOINT upsert"])
                 ; NB j/execute! will falsely signal append-insert! succeeded
                 ; if we propagate its truthy return value
-                nil)
+                false)
 
               ; No savepoint; gotta explode.
               :else

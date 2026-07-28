@@ -91,11 +91,12 @@
       (catch [:definite? true] e
         (cond ; Fine--we failed but there's no txn that'll break
               (not txn?)
-              nil
+              false
 
               ; We're in a txn, but have a savepoint; roll back.
               savepoint?
-              (j/execute! conn ["ROLLBACK TO SAVEPOINT upsert"])
+              (do (j/execute! conn ["ROLLBACK TO SAVEPOINT upsert"])
+                  false)
 
               ; No savepoint; gotta explode.
               true
