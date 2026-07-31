@@ -4,8 +4,8 @@ These are common workloads for testing SQL databases using Jepsen and JDBC. A
 Jepsen test for (e.g.) Postgres can use this library to generate transactions,
 submit them over a JDBC client, and evaluate their correctness.
 
-[![clojars badge](https://img.shields.io/clojars/v/dom-top.svg)](https://clojars.org/io.jepsen/sql)
-[![cljdoc badge](https://cljdoc.org/badge/dom-top/dom-top)](https://cljdoc.org/d/io.jepsen/sql)
+[![clojars badge](https://img.shields.io/clojars/v/io.jepsen/sql.svg)](https://clojars.org/io.jepsen/sql)
+[![cljdoc badge](https://cljdoc.org/badge/io.jepsen/sql)](https://cljdoc.org/d/io.jepsen/sql)
 
 ## Workloads
 
