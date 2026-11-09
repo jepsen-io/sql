@@ -1,4 +1,4 @@
-(ns jepsen.sql.internal
+(ns jepsen.sql.workload.internal
   "A simple test for internal consistency. Transactions perform a mixture of
   inserts, updates, and reads of individual keys, randomly changing but mostly
   focused on recent keys. We then look for cases where a transaction failed to
@@ -16,39 +16,53 @@
                     [history :as h]
                     [random :as rand]
                     [util :as util]]
-            [jepsen.sql [client :as c]]
+            [jepsen.sql [client :as c]
+             [checker :as sc :refer [assert-at-most-one
+                                     assert-instance-or-nil]]
+                        [encoding :as encoding]]
             [next.jdbc :as j]
             [next.jdbc.result-set :as rs]
             [next.jdbc.sql.builder :as sqlb]
             [clj-commons.slingshot :refer [try+ throw+]]
             [tesser.core :as t]))
 
+(def encoding
+  "Just integers for now"
+  (encoding/encoding :integer))
+
 (defn mop!
   "Applies a single transaction micro-operation. Returns micro-op, or nil if
   the operation did not take effect."
   [test conn [f k v]]
   (Thread/sleep (rand/zipf (:mop-delay test)))
-  (case f
-    :insert (c/try+ (info :insert k)
-              (j/execute! conn [(str "INSERT INTO internal (id, val) "
-                                     "VALUES (?, ?)")
-                                k v])
-              [f k v]
-              (catch [:definite? true] e nil))
+  (let [{:keys [encode decode]} encoding]
+    (case f
+      :insert (c/try+
+                (j/execute! conn [(str "INSERT INTO internal (id, val) "
+                                       "VALUES (?, ?)")
+                                  (encode k k)
+                                  (encode k v)])
+                [f k v]
+                (catch [:definite? true] e nil))
 
-    :update (if (-> conn
-                    (j/execute-one!
-                      [(str "UPDATE internal SET val = ? WHERE id = ?")
-                       v k])
-                    :next.jdbc/update-count
-                    pos?)
-              [f k v])
+      :update (if (-> conn
+                      (j/execute-one!
+                        [(str "UPDATE internal SET val = ? WHERE id = ?")
+                         (encode k v)
+                         (encode k k)])
+                      :next.jdbc/update-count
+                      pos?)
+                [f k v])
 
-    :r [f k (-> conn
-                (j/execute-one! [(str "SELECT (val) FROM internal "
-                                      "WHERE id = ?") k]
-                                {:builder-fn rs/as-unqualified-lower-maps})
-                :val)]))
+      :r (let [x (-> conn
+                     (j/execute! [(str "SELECT (val) FROM internal "
+                                       "WHERE id = ?")
+                                  (encode k k)]
+                                 {:builder-fn rs/as-unqualified-lower-maps})
+                     assert-at-most-one
+                     first
+                     :val)]
+           [f k (decode k x)]))))
 
 (defrecord Client []
   c/Client
@@ -56,12 +70,10 @@
     this)
 
   (setup! [_ test conn]
-    (info :conn conn)
     (j/execute! conn
                 [(str "CREATE TABLE IF NOT EXISTS internal ("
-                      "  id int not null primary key,"
-                      "  val integer"
-                      ")")]))
+                      "  id " (:type encoding) " not null primary key,"
+                      "  val " (:type encoding) ")")]))
 
   (invoke! [_ test conn op]
     (c/with-txn test [t conn]
@@ -165,4 +177,8 @@
   [opts]
   {:generator (gen)
    :client    (c/client (Client. nil nil) opts)
-   :checker   (Checker.)})
+   :checker   (checker/compose
+                {:internal (Checker.)
+                 :critical (sc/critical-checker)
+                 :missing-table-column
+                 (sc/missing-table-column-checker)})})

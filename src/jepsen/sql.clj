@@ -2,18 +2,20 @@
   "Main API for SQL tests."
   (:require [clojure.string :as str]
             [jepsen [cli :as cli]]
-            [jepsen.sql [append :as append]
-                        [internal :as internal]
-                        [rw :as rw]]))
-
+            [jepsen.sql [encoding :as encoding]]
+            [jepsen.sql.workload [append :as append]
+                                 [default-value :as default-value]
+                                 [internal :as internal]
+                                 [internal-sim :as internal-sim]
+                                 [rw :as rw]]))
 
 (def key-types
-  "The various ways we can select something by primary key."
+  "The various ways we can select something by logical key."
   #{:primary :secondary})
 
 (def upsert-types
   "The various upsert tactics we use."
-  #{:update-insert-update :on-conflict})
+  #{:update-insert-update :on-conflict :copy-on-write})
 
 (defn parse-comma-kws
   "Parses comma-separated strings into a vector of keywords."
@@ -30,7 +32,14 @@
                                 [...your options here...])
 
   This way your options can override any provided here."
-  [["-i" "--isolation LEVEL" "What level of isolation should we use for transactions? serializable, repeatable-read, etc."
+  [(let [encodings (set (mapv :name encoding/all-encodings))]
+     [nil "--encodings ENCODING_NAMES" "A comma-separated list of encoding names---different ways we can encode our integer values into the database."
+      :default (sort encodings)
+      :parse-fn parse-comma-kws
+      :validate [(partial every? encodings)
+                 (cli/one-of encodings)]])
+
+   ["-i" "--isolation LEVEL" "What level of isolation should we use for transactions? serializable, repeatable-read, etc."
     :default :serializable
     :parse-fn keyword
     :validate [#{:read-uncommitted
@@ -42,6 +51,10 @@
    [nil "--expected-consistency-model MODEL" "What level of isolation do we *expect* to observe? Defaults to the same as --isolation. This is usually passed to Elle's checker."
     :default nil
     :parse-fn keyword]
+
+   [nil "--[no-]indirection" "Allows workloads to look up rows via a separate, indirect lookup table."
+    :id :indirection?
+    :default false]
 
    [nil "--key-types TYPES" "Some workloads have multiple ways to select the row for a specific key. TYPES is a comma-separated list of types like primary,secondary, which means we use a mix of primary keys and (un-indexed) secondary keys."
     :default  (vec key-types)
@@ -56,13 +69,14 @@
    [nil "--key-dist DISTRIBUTION" "Key distribution pattern for workload generation."
     :default :exponential
     :parse-fn keyword
-    :validate [#{:uniform :exponential}
-               "Should be one of uniform or exponential"]]
+    :validate [#{:uniform :exponential :zipf}
+               "Should be one of uniform, exponential, or zipf"]]
 
    [nil "--[no-]linearizable-keys" "If set, assumes keys are linearizable for the wr workload."
     :id :linearizable-keys?
     :default false]
 
+   ; TODO: id :log-sql?
    [nil "--log-sql" "Logs SQL queries"]
 
    [nil "--max-txn-length NUM" "Maximum number of operations in a transaction."
@@ -102,6 +116,13 @@
     :default true]
    ])
 
+(defn opt-fn
+  "Transforms CLI options before execution. You can compose this with your own
+  opt fn as well."
+  [parsed]
+  (update-in parsed [:options :expected-consistency-model]
+             #(or % (get-in parsed [:options :isolation]))))
+
 (defn workloads
   "Constructs a map of workload names (e.g. `:internal`) to functions which
   take CLI options and return a workload map (e.g. `{:generator ..., :client
@@ -120,7 +141,9 @@
          wrap (fn wrap [workload-fn]
                 (fn workload [cli-opts]
                   (workload-fn (merge cli-opts sql-opts))))]
-     (update-vals {:append   append/workload
-                   :internal internal/workload
-                   :rw       rw/workload}
+     (update-vals {:append        append/workload
+                   :default-value default-value/workload
+                   :internal      internal/workload
+                   :internal-sim  internal-sim/workload
+                   :rw            rw/workload}
                   wrap)))
